@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Local.props (gitignored) sets GameInstallDir and the deploy-copy target. Without it the build only compiles —
+       nothing is copied into the game folder. -->
+  <Import Project="$(MSBuildThisFileDirectory)Local.props" Condition="Exists('$(MSBuildThisFileDirectory)Local.props')" />
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>CS8632;CS8765</NoWarn>
+    <RootNamespace>Stellar.AutoManifest</RootNamespace>
+    <AssemblyName>Stellar.AutoManifest</AssemblyName>
+    <Version>0.1.0</Version>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- House style needs BubbleElement.FillColorFn / OutlineColorFn, ScrollElement.FixedHeight, theme status colours
+         (fw 2.30), TextElement.CenterCaps and the modal ConfirmHostElement / ConfirmController (fw 2.33) → SDK 2.33.0. -->
+    <PackageReference Include="Stellar.Abstractions"       Version="2.33.0" />
+    <PackageReference Include="Stellar.PluginContracts"    Version="2.33.0" />
+    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.33.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Lang/en.json" LogicalName="Stellar.AutoManifest.Lang.en.json" />
+    <EmbeddedResource Include="Lang/ja.json" LogicalName="Stellar.AutoManifest.Lang.ja.json" />
+    <EmbeddedResource Include="Lang/th.json" LogicalName="Stellar.AutoManifest.Lang.th.json" />
+    <EmbeddedResource Include="Lang/id.json" LogicalName="Stellar.AutoManifest.Lang.id.json" />
+    <EmbeddedResource Include="Lang/fil.json" LogicalName="Stellar.AutoManifest.Lang.fil.json" />
+    <EmbeddedResource Include="Lang/ko.json" LogicalName="Stellar.AutoManifest.Lang.ko.json" />
+    <!-- Header / launcher glyph, pre-drawn per pixel size (house icon rule). Looked up as
+         "Stellar.AutoManifest.automanifest-<px>.png". Placeholders until the real art lands at the same names. -->
+    <EmbeddedResource Include="Resources/icons/automanifest-*.png" LogicalName="Stellar.AutoManifest.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
