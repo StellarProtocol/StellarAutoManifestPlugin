@@ -1,0 +1,210 @@
+namespace Stellar.AutoManifest;
+
+// The game-side half of Auto Manifest: ONE Lua table `__stam` defined once (compile once — Plugin-Performance-Rules §4,
+// Lua-Injection-from-CSharp "Polling Lua cheaply") and then driven by one-line DoString calls. Every result is PARKED
+// in a global with rawset (the game's _G rejects plain writes — strict-global guard) and read back by C# through the
+// type-strict ILua getters; nothing ever calls back into C# (a native Lua→C# callback crashes IL2CPP).
+//
+// Game calls used (release_4.7 Lua, verified 2026-11-21 — static, not live-validated):
+//   reforge data   Z.ContainerMgr.CharSerialize.seasonTalentReforgeData.seasonTalentReforgeMap[seasonId]
+//                  (season_talent_refine_sub_view.lua:967-972); seasonId = GetVM('season').GetCurrentSeasonId()
+//                  (season_vm.lua:35); fields level / storeEntries / lastReforgeResults / lastReforgeTime
+//                  (zcontainer/season_talent_reforge_season_data.lua); storeEntryLimit (…refine_storage_left_sub_view:99)
+//   level row      SeasonTalentReforgeLevelTableMgr rows keyed by (Season, Level) (season_talent_entry_data.lua:116-138);
+//                  DefaultConsume = {{itemId, count}, …} per pull (refine_sub_view.lua:827-850)
+//   blessing gate  next level row exists AND CheckCondition(next.UnlockCondition, false) (refine_sub_view.lua:601-609)
+//   row unlock     SeasonTalentReforgeAffixSlotTableMgr sorted by Id, CheckCondition(row.UnlockCondition, false)
+//                  (season_talent_insert_window_view.lua:618-634)
+//   roll           GetVM('season_talent_entry').AsyncSeasonTalentReforge(blessRows, times, token) (entry_vm.lua:246-260);
+//                  blessRows = { SeasonTalentReforgeItemTableMgr.GetRow(1220411) } (refine_sub_view.lua:589-599, 693)
+//   store          …AcyncStoreSeasonTalentReforgeEntry(pull0, row0, token) — "Acync" typo is real (entry_vm.lua:186)
+//   owned count    GetVM('items').GetItemTotalCount(id) (items_vm.lua:335)
+//   looting class  GetVM('profession'):GetProfessionDropId() (profession_vm.lua:94) → ProfessionSystemTableMgr.Name (:113)
+//   names / values GetVM('season_talent_entry').GetReforgeEntryAttrName(row) / GetReforgeEntryAttrValueText(row)
+//                  (entry_vm.lua:20-30); category Lang('SeasonTalentAttrLibName_'..id) (entry_popup_view.lua:375)
+//   item names     Z.TableMgr.GetRow('ItemTableMgr', id, true).Name (items_vm.lua:1268)
+//   async          Z.CoroUtil.create_coro_xpcall(fn, errFn)() + Z.CancelSource.Rent() / :CreateToken() / :Recycle()
+// ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
+public sealed partial class Plugin
+{
+    private const int LuaScriptVersion = 1;
+
+    private const string LuaScript = @"pcall(function()
+local M = {}
+local REM, BLESS = 1220006, 1220411
+local function tbl(n) return Z.TableMgr.GetTable(n) end
+local function entryVm() return Z.VMMgr.GetVM('season_talent_entry') end
+local function count(id) return Z.VMMgr.GetVM('items').GetItemTotalCount(id) or 0 end
+local function reforge()
+  local cs = Z.ContainerMgr.CharSerialize
+  local rd = cs and cs.seasonTalentReforgeData
+  if rd == nil then return nil end
+  local sid = Z.VMMgr.GetVM('season').GetCurrentSeasonId() or 0
+  local map = rd.seasonTalentReforgeMap
+  local sd = nil
+  if map then sd = map[sid] end
+  return rd, sd, sid
+end
+local levels = nil
+local function levelRow(sid, lv)
+  if levels == nil then
+    levels = {}
+    for _, row in pairs(tbl('SeasonTalentReforgeLevelTableMgr').GetDatas()) do
+      if levels[row.Season] == nil then levels[row.Season] = {} end
+      levels[row.Season][row.Level] = row
+    end
+  end
+  local s = levels[sid]
+  if s then return s[lv] end
+  return nil
+end
+local slots = nil
+local function slotRows()
+  if slots == nil then
+    slots = {}
+    for _, row in pairs(tbl('SeasonTalentReforgeAffixSlotTableMgr').GetDatas()) do slots[#slots + 1] = row end
+    table.sort(slots, function(a, b) return a.Id < b.Id end)
+  end
+  return slots
+end
+function M.state()
+  local rd, sd, sid = reforge()
+  if rd == nil then rawset(_G, '__stam_s', '0') return end
+  local lv = 1
+  if sd and sd.level then lv = sd.level end
+  local stored = 0
+  if sd and sd.storeEntries then
+    for _, e in pairs(sd.storeEntries) do if e.entryId ~= 0 then stored = stored + 1 end end
+  end
+  local row = levelRow(sid, lv)
+  local cost, ok1, ok10 = 0, row ~= nil, row ~= nil
+  if row then
+    for _, c in ipairs(row.DefaultConsume) do
+      if c[1] == REM then cost = cost + c[2] end
+      local have = count(c[1])
+      if have < c[2] then ok1 = false end
+      if have < c[2] * 10 then ok10 = false end
+    end
+  end
+  local nxt = levelRow(sid, lv + 1)
+  local bless = nxt ~= nil and Z.ConditionHelper.CheckCondition(nxt.UnlockCondition, false)
+  local mask = {}
+  for i, s in ipairs(slotRows()) do
+    if Z.ConditionHelper.CheckCondition(s.UnlockCondition, false) then mask[i] = '1' else mask[i] = '0' end
+  end
+  local prof = Z.VMMgr.GetVM('profession'):GetProfessionDropId() or 0
+  rawset(_G, '__stam_s', table.concat({ '1', sid, lv, rd.storeEntryLimit or 0, stored, count(REM), count(BLESS), cost,
+    ok1 and 1 or 0, ok10 and 1 or 0, bless and 1 or 0, prof, table.concat(mask) }, '|') .. '|')
+end
+function M.results()
+  local rd, sd = reforge()
+  if sd == nil then rawset(_G, '__stam_r', '') return end
+  local parts = {}
+  local res = sd.lastReforgeResults
+  if res then
+    for p, r in ipairs(res) do
+      local ids = {}
+      if r.entries then for k, e in ipairs(r.entries) do ids[k] = e.entryId or 0 end end
+      parts[p] = table.concat(ids, ',')
+    end
+  end
+  rawset(_G, '__stam_r', tostring(sd.lastReforgeTime or 0) .. '#' .. table.concat(parts, ';'))
+end
+local function run(fn)
+  rawset(_G, '__stam_ret', nil)
+  rawset(_G, '__stam_err', nil)
+  local cs = Z.CancelSource.Rent()
+  local done = false
+  local function fin() if not done then done = true pcall(function() cs:Recycle() end) end end
+  Z.CoroUtil.create_coro_xpcall(function()
+    local ret = fn(cs:CreateToken())
+    fin()
+    rawset(_G, '__stam_ret', tonumber(ret) or -3)
+  end, function(err)
+    fin()
+    rawset(_G, '__stam_err', tostring(err))
+    rawset(_G, '__stam_ret', -1)
+  end)()
+end
+function M.roll(bless, times)
+  run(function(tok)
+    local items = {}
+    if bless then
+      local row = tbl('SeasonTalentReforgeItemTableMgr').GetRow(BLESS, true)
+      if row == nil then return -2 end
+      items[1] = row
+    end
+    return entryVm().AsyncSeasonTalentReforge(items, times, tok)
+  end)
+end
+function M.store(p, r)
+  run(function(tok) return entryVm().AcyncStoreSeasonTalentReforgeEntry(p, r, tok) end)
+end
+function M.rows()
+  local out = {}
+  for _, row in pairs(tbl('SeasonTalentFactorAttrLibTableMgr').GetDatas()) do
+    local t, v = 0, 0
+    local ae = row.AttrEffect and row.AttrEffect[1]
+    if ae then
+      t = ae[1] or 0
+      if t == 3 then
+        local bp = row.BuffPar and row.BuffPar[1]
+        if bp then v = bp[1] or 0 end
+      else v = ae[3] or 0 end
+    end
+    out[#out + 1] = table.concat({ row.Id, row.Group, row.AffixType, row.AttrLibId, row.Profession or 0,
+      row.AffixQuality, t, v, row.ExtremumTag or 0 }, ',')
+  end
+  rawset(_G, '__stam_rows', table.concat(out, ';'))
+end
+function M.names(spec)
+  local vm = entryVm()
+  local tm = tbl('SeasonTalentFactorAttrLibTableMgr')
+  local out = {}
+  for g, ids in string.gmatch(spec, '(%d+):([%d,]+)') do
+    local vals, name, first = {}, '', true
+    for id in string.gmatch(ids, '%d+') do
+      local row = tm.GetRow(tonumber(id), true)
+      local vt = ''
+      if row then
+        if first then
+          first = false
+          local ok, n = pcall(vm.GetReforgeEntryAttrName, row)
+          if ok and n then name = tostring(n) end
+        end
+        local ok, t = pcall(vm.GetReforgeEntryAttrValueText, row)
+        if ok and t then vt = tostring(t) end
+      end
+      vals[#vals + 1] = vt
+    end
+    out[#out + 1] = g .. '\31' .. name .. '\31' .. table.concat(vals, '\31')
+  end
+  rawset(_G, '__stam_names', table.concat(out, '\30'))
+end
+function M.meta()
+  local function L(k)
+    local ok, has = pcall(function() return Z.LangMgr:IsContainKey(k) end)
+    if ok and has then return tostring(Lang(k)) end
+    return ''
+  end
+  local function item(id)
+    local r = Z.TableMgr.GetRow('ItemTableMgr', id, true)
+    if r and r.Name then return tostring(r.Name) end
+    return ''
+  end
+  local out = {}
+  for _, id in ipairs({ 1001, 101, 102, 103, 104, 105 }) do out[#out + 1] = L('SeasonTalentAttrLibName_' .. id) end
+  out[#out + 1] = item(REM)
+  out[#out + 1] = item(BLESS)
+  rawset(_G, '__stam_meta', table.concat(out, '\31'))
+end
+function M.prof(id)
+  local r = tbl('ProfessionSystemTableMgr').GetRow(id, true)
+  local n = ''
+  if r and r.Name then n = tostring(r.Name) end
+  rawset(_G, '__stam_prof', n)
+end
+rawset(_G, '__stam', M)
+rawset(_G, '__stam_v', 1)   -- = LuaScriptVersion: bump both together
+end)";
+}

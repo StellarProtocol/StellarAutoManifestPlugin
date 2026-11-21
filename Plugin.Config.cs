@@ -1,0 +1,117 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using Stellar.Abstractions.Services;
+
+namespace Stellar.AutoManifest;
+
+/// <summary>
+/// Persisted choices (shared plugin config, section "automanifest"): the target rows (imprint Group + minimum step)
+/// and the RUN settings. Cached in fields after the first read — the window polls them every refresh — and saved on
+/// change only (never inside a drag / per frame).
+/// </summary>
+public sealed partial class Plugin
+{
+    private const int MaxTargets = 12;   // row pool size; "+ Add target" recesses when full
+
+    // "Spend at most (Remnants)" choices (approved default 1,200) and "Keep pocket slots free" 0..5 (default 0).
+    private static readonly int[] SpendChoices = { 300, 600, 1200, 2400, 3600, 6000, 12000 };
+    private const int DefaultSpendIndex = 2;
+    private static readonly int[] KeepFreeChoices = { 0, 1, 2, 3, 4, 5 };
+    private static readonly string[] SpendOptions = Array.ConvertAll(SpendChoices, v => N0(v));
+    private static readonly string[] KeepFreeOptions = Array.ConvertAll(KeepFreeChoices, v => v.ToString(CultureInfo.InvariantCulture));
+
+    private IConfigSection _cfg = null!;
+    private readonly List<Target> _targets = new();
+    private bool _pullTen = true;     // approved default: 10-pull
+    private bool _useBlessing = true; // approved default: On
+    private int _spendIndex = DefaultSpendIndex;
+    private int _keepFreeIndex;
+
+    private int SpendLimit => SpendChoices[Math.Clamp(_spendIndex, 0, SpendChoices.Length - 1)];
+    private int KeepFree => KeepFreeChoices[Math.Clamp(_keepFreeIndex, 0, KeepFreeChoices.Length - 1)];
+    private int PullTimes => _pullTen ? 10 : 1;
+
+    private void LoadConfig()
+    {
+        _cfg = _services.Config.GetSection("automanifest");
+        _pullTen       = _cfg.Get("pullTen", true);
+        _useBlessing   = _cfg.Get("useBlessing", true);
+        _spendIndex    = Array.IndexOf(SpendChoices, _cfg.Get("spendLimit", SpendChoices[DefaultSpendIndex]));
+        if (_spendIndex < 0) _spendIndex = DefaultSpendIndex;   // a value no longer offered → the default
+        _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
+
+        // "group:step,group:step" — a stale group (another season's table) is kept and simply never matches; it shows
+        // as "#<group>" until removed.
+        _targets.Clear();
+        foreach (var part in (_cfg.Get("targets", string.Empty) ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split(':');
+            if (kv.Length == 2 && int.TryParse(kv[0], out var g) && int.TryParse(kv[1], out var s) && _targets.Count < MaxTargets)
+                _targets.Add(new Target { Group = g, MinStep = Math.Max(0, s) });
+        }
+    }
+
+    private void SaveTargets()
+    {
+        var sb = new StringBuilder();
+        foreach (var t in _targets)
+        {
+            if (sb.Length > 0) sb.Append(',');
+            sb.Append(t.Group).Append(':').Append(t.MinStep);
+        }
+        _cfg.Set("targets", sb.ToString());
+        _cfg.Save();
+    }
+
+    private void SetPullTen(bool v)       { if (Running || _pullTen == v) return; _pullTen = v; _cfg.Set("pullTen", v); _cfg.Save(); MarkMain(); }
+    private void SetUseBlessing(bool v)   { if (Running) return; _useBlessing = v; _cfg.Set("useBlessing", v); _cfg.Save(); MarkMain(); }
+
+    private void SetSpendIndex(int i)
+    {
+        if (Running || i < 0 || i >= SpendChoices.Length) return;
+        _spendIndex = i; _cfg.Set("spendLimit", SpendChoices[i]); _cfg.Save(); MarkMain();
+    }
+
+    private void SetKeepFreeIndex(int i)
+    {
+        if (Running || i < 0 || i >= KeepFreeChoices.Length) return;
+        _keepFreeIndex = i; _cfg.Set("keepFree", KeepFreeChoices[i]); _cfg.Save(); MarkMain();
+    }
+
+    // ── target rows ───────────────────────────────────────────────────────────────────────────────────────────────
+    private void AddTarget(int group, int minStep)
+    {
+        if (Running || _targets.Count >= MaxTargets) return;
+        _targets.Add(new Target { Group = group, MinStep = minStep });
+        SaveTargets();
+        MarkMain();
+    }
+
+    private void RemoveTarget(int index)
+    {
+        if (Running || index < 0 || index >= _targets.Count) return;
+        _targets.RemoveAt(index);
+        _rowHover.Reset();   // the next row slides under the pointer — it must not inherit the hover
+        SaveTargets();
+        MarkMain();
+    }
+
+    private void SetTargetMin(int index, int step)
+    {
+        if (Running || index < 0 || index >= _targets.Count) return;
+        _targets[index].MinStep = step;
+        SaveTargets();
+        MarkMain();
+    }
+
+    // Clamp saved steps to the live table once it is loaded (a season change can shorten a ladder).
+    private void RebindTargets()
+    {
+        if (_catalog == null) return;
+        foreach (var t in _targets)
+            if (_catalog.ByGroup.TryGetValue(t.Group, out var imp) && imp.Steps.Length > 0)
+                t.MinStep = Math.Clamp(t.MinStep, 0, imp.Steps.Length - 1);
+    }
+}
