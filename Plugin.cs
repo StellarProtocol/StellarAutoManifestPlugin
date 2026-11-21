@@ -7,7 +7,7 @@ namespace Stellar.AutoManifest;
 
 /// <summary>
 /// Auto Manifest — automates the game's Matrix Manifestation (Season Talent Reforge; KB Matrix-Manifestation.md): the
-/// player picks target imprints ("imprint X ≥ value") and the plugin rolls, stores every match into the pocket, and
+/// player picks target imprints ("imprint X, value v or higher" = "v+") and the plugin rolls, stores every match into the pocket, and
 /// stops when all targets are stored or a limit is hit. Approved UI: <c>_scratch\prototypes\automanifest-APPROVED.md</c>.
 /// <para>Layout: <c>Plugin.Window*.cs</c> (main window), <c>Plugin.Picker*.cs</c> (Add-target picker),
 /// <c>Plugin.Run.cs</c> (the run state machine), <c>Plugin.Lua*.cs</c> (the game bridge + catalogue load),

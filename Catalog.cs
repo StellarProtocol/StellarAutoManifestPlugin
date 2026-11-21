@@ -28,7 +28,7 @@ internal sealed class Imprint
     public string NameLower = string.Empty;
     public string RangeText = string.Empty;
     public ImprintStep[] Steps = Array.Empty<ImprintStep>();   // ascending by entry id (= ascending value)
-    public string[] MinOptions = Array.Empty<string>();         // "≥ v" per step — the row dropdown's options (cached)
+    public string[] MinOptions = Array.Empty<string>();         // "v+" per step — the row dropdown's options (cached)
 }
 
 /// <summary>
@@ -144,7 +144,9 @@ internal sealed class ImprintCatalog
 
 internal static class ImprintText
 {
-    public const string AtLeast = "≥ ";
+    // "0.2%+" = this value or higher. A suffix, not a "≥ " prefix: "≥" draws BLANK in the game font (seen in game
+    // 2026-11-21 on the row dropdowns and the picker's Add pill).
+    public const string OrHigher = "+";
 
     public static void RebuildTexts(this Imprint imp)
     {
@@ -154,7 +156,7 @@ internal static class ImprintText
         if (lo.EndsWith("%", StringComparison.Ordinal) && hi.EndsWith("%", StringComparison.Ordinal)) lo = lo.Substring(0, lo.Length - 1);
         imp.RangeText = lo + " – " + hi;
         var opts = new string[imp.Steps.Length];
-        for (int i = 0; i < opts.Length; i++) opts[i] = AtLeast + imp.Steps[i].ValueText;
+        for (int i = 0; i < opts.Length; i++) opts[i] = imp.Steps[i].ValueText + OrHigher;
         imp.MinOptions = opts;
     }
 }

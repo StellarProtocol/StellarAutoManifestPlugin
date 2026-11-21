@@ -298,7 +298,7 @@ public sealed partial class Plugin
         foreach (var t in _targets)
         {
             if (sb.Length > 0) sb.Append(", ");
-            sb.Append(t.Group).Append("≥").Append(t.MinStep + 1).Append(t.Stored ? "(stored " + t.StoredText + ")" : "");
+            sb.Append(t.Group).Append(":step").Append(t.MinStep + 1).Append('+').Append(t.Stored ? "(stored " + t.StoredText + ")" : "");
         }
         return sb.Length > 0 ? sb.ToString() : "-";
     }

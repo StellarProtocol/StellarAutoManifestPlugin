@@ -14,7 +14,7 @@ namespace Stellar.AutoManifest;
 ///   imprint list: "Name · kind" (class effect text, else category) + muted full range; selected row = accent outline
 ///   MINIMUM VALUE (hint "every value the game can roll"): one chip per rollable step, coloured by quality
 ///   legend "Superior · Excellent · Epic · Immortal — picks this value or higher"
-///   Primary "Add “Name ≥ v”" + Neutral Cancel
+///   Primary "Add “Name v+”" + Neutral Cancel
 /// Widened to 520 (house rule 18) so the 11 value chips fit one line at a readable size. Rows / chips:
 /// <c>Plugin.Picker.Rows.cs</c>. The filtered list is rebuilt on a category / search / class / catalogue change only.
 /// </summary>
@@ -172,7 +172,7 @@ public sealed partial class Plugin
         _pickerWindow?.MarkDirty();
     }
 
-    // Add “Great Crimson Lotus ≥ 2.24%” — rebuilt when the selection, the step or the language moves.
+    // Add “Great Crimson Lotus 2.24%+” — rebuilt when the selection, the step or the language moves.
     private Imprint? _addLabelImp;
     private int _addLabelStep = -1, _addLabelGen = -1;
     private string _addLabel = string.Empty;
