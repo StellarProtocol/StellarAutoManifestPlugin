@@ -24,6 +24,7 @@ internal sealed class Imprint
     public int Profession;      // 0 = every class
     public bool IsBuff;         // AttrEffect type 3: value lives in BuffPar, shown as raw/100 %
     public string Name = string.Empty;
+    public string Kind = string.Empty;       // class imprints: the effect text around the quoted name ("Twin Striker's … Oath DMG")
     public string NameLower = string.Empty;
     public string RangeText = string.Empty;
     public ImprintStep[] Steps = Array.Empty<ImprintStep>();   // ascending by entry id (= ascending value)
@@ -92,13 +93,14 @@ internal sealed class ImprintCatalog
         foreach (var rec in dump.Split('\x1E', StringSplitOptions.RemoveEmptyEntries))
         {
             var f = rec.Split('\x1F');
-            if (f.Length < 2 || !int.TryParse(f[0], out var group) || !ByGroup.TryGetValue(group, out var imp)) continue;
+            if (f.Length < 3 || !int.TryParse(f[0], out var group) || !ByGroup.TryGetValue(group, out var imp)) continue;
             var name = StripTags(f[1]).Trim();
             if (name.Length > 0) { imp.Name = name; imp.NameLower = name.ToLowerInvariant(); }
+            imp.Kind = StripTags(f[2]).Trim();
             if (!imp.IsBuff)
-                for (int i = 0; i < imp.Steps.Length && i + 2 < f.Length; i++)
+                for (int i = 0; i < imp.Steps.Length && i + 3 < f.Length; i++)
                 {
-                    var v = StripTags(f[i + 2]).Trim();
+                    var v = StripTags(f[i + 3]).Trim();
                     if (v.Length > 0) imp.Steps[i].ValueText = v;
                 }
             imp.RebuildTexts();

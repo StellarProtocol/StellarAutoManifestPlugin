@@ -60,7 +60,8 @@ public sealed partial class Plugin
         if (ReferenceEquals(imp, _lineImp[slot]) && _lineGen[slot] == _langGen && muted.Equals(_lineMuted[slot]) && _lineText[slot] != null)
             return _lineText[slot];
         _lineImp[slot] = imp; _lineGen[slot] = _langGen; _lineMuted[slot] = muted;
-        var cat = CategoryNameForLib(imp.AttrLibId);
+        // The effect kind: a class imprint's own text around its quoted name, else the category label.
+        var cat = imp.Kind.Length > 0 ? imp.Kind : CategoryNameForLib(imp.AttrLibId);
         return _lineText[slot] = cat.Length == 0 ? imp.Name : imp.Name + " <color=#" + HexOf(muted) + ">· " + cat + "</color>";
     }
 

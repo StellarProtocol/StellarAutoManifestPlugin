@@ -11,7 +11,7 @@ namespace Stellar.AutoManifest;
 ///   ADD TARGET caption + icon-only ✕
 ///   category chips: Class · Secondary · Primary · Polarity · Resilience · Element (Class = current looting class only)
 ///   search ("Search imprints…")
-///   imprint list: "Name · category" + muted full range; selected row = accent outline
+///   imprint list: "Name · kind" (class effect text, else category) + muted full range; selected row = accent outline
 ///   MINIMUM VALUE (hint "every value the game can roll"): one chip per rollable step, coloured by quality
 ///   legend "Superior · Excellent · Epic · Immortal — picks this value or higher"
 ///   Primary "Add “Name ≥ v”" + Neutral Cancel

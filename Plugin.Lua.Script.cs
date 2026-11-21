@@ -21,13 +21,14 @@ namespace Stellar.AutoManifest;
 //   owned count    GetVM('items').GetItemTotalCount(id) (items_vm.lua:335)
 //   looting class  GetVM('profession'):GetProfessionDropId() (profession_vm.lua:94) → ProfessionSystemTableMgr.Name (:113)
 //   names / values GetVM('season_talent_entry').GetReforgeEntryAttrName(row) / GetReforgeEntryAttrValueText(row)
-//                  (entry_vm.lua:20-30); category Lang('SeasonTalentAttrLibName_'..id) (entry_popup_view.lua:375)
+//                  (entry_vm.lua:20-30); class (buff) rows return '' → GetReforgeEntryAttrDesc(<row ID>) (:12),
+//                  short name = the quoted span (live-validated 2026-11-21, KB Matrix-Manifestation §7c); category Lang('SeasonTalentAttrLibName_'..id) (entry_popup_view.lua:375)
 //   item names     Z.TableMgr.GetRow('ItemTableMgr', id, true).Name (items_vm.lua:1268)
 //   async          Z.CoroUtil.create_coro_xpcall(fn, errFn)() + Z.CancelSource.Rent() / :CreateToken() / :Recycle()
 // ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
 public sealed partial class Plugin
 {
-    private const int LuaScriptVersion = 1;
+    private const int LuaScriptVersion = 2;
 
     private const string LuaScript = @"pcall(function()
 local M = {}
@@ -157,12 +158,39 @@ function M.rows()
   end
   rawset(_G, '__stam_rows', table.concat(out, ';'))
 end
+-- Class (buff) imprints: GetReforgeEntryAttrName returns '' (validated in game 2026-11-21); the only localized text is
+-- GetReforgeEntryAttrDesc(<row ID>), e.g. <style=ItemQuality_2><color=#ffe2af>[Class]</color>Twin Striker's
+-- ""Lucky Strike"" Oath DMG <style=""accent-gn"">+0.65%</style>.</style>  →  name 'Lucky Strike', kind
+-- 'Twin Striker's … Oath DMG'. Quotes: "" “ ” 「 」 『 』 as byte escapes (no encoding round trip).
+local QUOTES = { { '""', '""' }, { '\226\128\156', '\226\128\157' }, { '\227\128\140', '\227\128\141' },
+  { '\227\128\142', '\227\128\143' } }
+local function trim(t)
+  t = string.gsub(t, '%s+', ' ')
+  t = string.gsub(t, '^%s+', '')
+  local prev
+  repeat
+    prev = t
+    t = string.gsub(t, '[%s%.,:;!]+$', '')
+    t = string.gsub(t, '\227\128\130$', '')
+  until t == prev
+  return t
+end
+local function shortName(desc)
+  local s = string.gsub(desc, '<color=[^>]*>.-</color>', '', 1)
+  s = string.gsub(s, '<style=""accent%-gn"">.-</style>', '')
+  s = string.gsub(s, '<[^>]*>', '')
+  for _, q in ipairs(QUOTES) do
+    local a, b, inner = string.find(s, q[1] .. '(.-)' .. q[2])
+    if a then return trim(inner), trim(string.sub(s, 1, a - 1) .. ' \226\128\166 ' .. string.sub(s, b + 1)) end
+  end
+  return trim(s), ''
+end
 function M.names(spec)
   local vm = entryVm()
   local tm = tbl('SeasonTalentFactorAttrLibTableMgr')
   local out = {}
   for g, ids in string.gmatch(spec, '(%d+):([%d,]+)') do
-    local vals, name, first = {}, '', true
+    local vals, name, kind, first = {}, '', '', true
     for id in string.gmatch(ids, '%d+') do
       local row = tm.GetRow(tonumber(id), true)
       local vt = ''
@@ -171,13 +199,17 @@ function M.names(spec)
           first = false
           local ok, n = pcall(vm.GetReforgeEntryAttrName, row)
           if ok and n then name = tostring(n) end
+          if name == '' then
+            local okd, d = pcall(vm.GetReforgeEntryAttrDesc, tonumber(id))
+            if okd and d then name, kind = shortName(tostring(d)) end
+          end
         end
         local ok, t = pcall(vm.GetReforgeEntryAttrValueText, row)
         if ok and t then vt = tostring(t) end
       end
       vals[#vals + 1] = vt
     end
-    out[#out + 1] = g .. '\31' .. name .. '\31' .. table.concat(vals, '\31')
+    out[#out + 1] = g .. '\31' .. name .. '\31' .. kind .. '\31' .. table.concat(vals, '\31')
   end
   rawset(_G, '__stam_names', table.concat(out, '\30'))
 end
@@ -205,6 +237,6 @@ function M.prof(id)
   rawset(_G, '__stam_prof', n)
 end
 rawset(_G, '__stam', M)
-rawset(_G, '__stam_v', 1)   -- = LuaScriptVersion: bump both together
+rawset(_G, '__stam_v', 2)   -- = LuaScriptVersion: bump both together
 end)";
 }
