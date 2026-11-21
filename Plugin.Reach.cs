@@ -22,7 +22,9 @@ public sealed partial class Plugin
     private int _reachVer;     // bumped whenever the result changes — text caches key on it
     private (int season, int level, bool bless, string mask, int targets, bool known) _reachKey = (-1, -1, false, string.Empty, -1, false);
     private readonly bool[] _rollNow = { true, true, true, true };   // quality 2..5 can roll at the current level
-    private int _reachableTargets, _unreachTargets;                  // known targets that can / can't roll now
+    // Un-stored known targets: can roll at the current level / can't yet (needs a level, or locked) / can be reached at
+    // all — rolls now, or Blessing is really used AND levelling gets to an open level where it can roll.
+    private int _rollNowTargets, _unreachTargets, _reachableTargets;
 
     // Blessing as the next pull really uses it: the setting AND the game's gate (no Blessing at max level / when the next
     // level is locked) — the run applies the same rule per pull (Plugin.Run.cs Cycle).
@@ -30,8 +32,11 @@ public sealed partial class Plugin
 
     private bool RollNow(int quality) => _rollNow[Math.Clamp(quality - 2, 0, 3)];
 
-    // Start is gated only when the answer is KNOWN and every known target can't roll now.
-    private bool ReachBlocksStart() => _st.Valid && _reachableTargets == 0 && _unreachTargets > 0;
+    // Start is gated only when the answer is KNOWN and NO un-stored target can be reached (user decision "allow",
+    // 2026-11-21): a target that can't roll now still counts when Blessing is really used and levelling reaches an open
+    // level where it can (Need > 0 under the Prime weights). Without Blessing a pull gives no confirmed Matrix EXP, so a
+    // "needs Lv N" target alone keeps Start off; a "locked" one (-1) always does.
+    private bool ReachBlocksStart() => _st.Valid && _reachKey.known && _reachableTargets == 0 && _unreachTargets > 0;
 
     private void UpdateReach()
     {
@@ -56,20 +61,25 @@ public sealed partial class Plugin
 
         bool levelUp = Running && known && prev.known && prev.season == _st.SeasonId && prev.level > 0 && lv > prev.level;
         StringBuilder? now = null;
-        int reachable = 0, unreach = 0;
+        int rollNow = 0, unreach = 0, reachable = 0;
         foreach (var t in _targets)
         {
             int before = t.Need;
             t.Need = known ? NeedFor(t, lv, prime) : 0;
             if (!known || !_catalog!.ByGroup.ContainsKey(t.Group)) continue;
-            if (t.Need == 0) reachable++; else unreach++;
+            if (!t.Stored)
+            {
+                if (t.Need == 0) rollNow++; else unreach++;
+                if (t.Need == 0 || (prime && t.Need > 0)) reachable++;
+            }
             if (!levelUp || before == 0 || t.Need != 0 || t.Stored) continue;
             now ??= new StringBuilder();
             if (now.Length > 0) now.Append(", ");
             now.Append(NameOfGroup(t.Group));
         }
-        _reachableTargets = reachable;
+        _rollNowTargets = rollNow;
         _unreachTargets = unreach;
+        _reachableTargets = reachable;
         if (levelUp) OnMatrixLevelUp(prev.level, lv, now?.ToString() ?? string.Empty);
         MarkMain();
         _pickerWindow?.MarkDirty();
@@ -142,7 +152,7 @@ public sealed partial class Plugin
         var list = new StringBuilder();
         foreach (var t in _targets)
         {
-            if (t.Need == 0 || !_catalog.ByGroup.ContainsKey(t.Group)) continue;
+            if (t.Stored || t.Need == 0 || !_catalog.ByGroup.ContainsKey(t.Group)) continue;
             if (list.Length > 0) list.Append(", ");
             list.Append(t.Need > 0 ? _loc.TFormat(KeyReachItemLv, NameOfGroup(t.Group), t.Need)
                                    : _loc.TFormat(KeyReachItemLocked, NameOfGroup(t.Group)));

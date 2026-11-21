@@ -105,7 +105,7 @@ public sealed partial class Plugin
         _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} blessing={_useBlessing}"
                            + $"(allowed={_st.BlessAllowed}) spendLimit={SpendLimit} keepFree={KeepFree} level={_st.Level} "
                            + $"pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms} exp={_st.Exp} "
-                           + $"reachableNow={_reachableTargets} unreachable={_unreachTargets}");
+                           + $"rollNow={_rollNowTargets} notYet={_unreachTargets} reachable={_reachableTargets}");
         Enter(RunPhase.Cycle);
     }
 
