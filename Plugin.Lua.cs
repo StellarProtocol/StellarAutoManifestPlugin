@@ -47,6 +47,18 @@ public sealed partial class Plugin
         return ReforgeState.Parse(_services.Lua.ReadGlobalString("__stam_s"));
     }
 
+    // The current season's level table (weights, EXP per level). Static game data: read once per season (Plugin.Reach.cs).
+    private const string CallLevels = "pcall(function() rawset(_G,'__stam_lv',nil) rawget(_G,'__stam').levels() end)";
+
+    private MatrixLevels? ReadLevels()
+    {
+        if (!EnsureLua()) return null;
+        _services.Lua.DoString(CallLevels);
+        var t = MatrixLevels.Parse(_services.Lua.ReadGlobalString("__stam_lv"));
+        _services.Lua.DoString("rawset(_G,'__stam_lv',nil)");
+        return t;
+    }
+
     private ReforgeResults ReadResults()
     {
         if (!EnsureLua()) return new ReforgeResults();

@@ -12,6 +12,9 @@ namespace Stellar.AutoManifest;
 //                  (zcontainer/season_talent_reforge_season_data.lua); storeEntryLimit (…refine_storage_left_sub_view:99)
 //   level row      SeasonTalentReforgeLevelTableMgr rows keyed by (Season, Level) (season_talent_entry_data.lua:116-138);
 //                  DefaultConsume = {{itemId, count}, …} per pull (refine_sub_view.lua:827-850)
+//   reachability   sd.exp = EXP INSIDE the current level, out of that level's UpgradeExp (refine_sub_view.lua:167-169);
+//                  NormalWeight / PrimeWeight indexed by quality (entry_popup_view.lua:227-236); per-level gate =
+//                  CheckCondition(row.UnlockCondition, false) like the Blessing gate; ExpAdd of item row 1220411
 //   blessing gate  next level row exists AND CheckCondition(next.UnlockCondition, false) (refine_sub_view.lua:601-609)
 //   row unlock     SeasonTalentReforgeAffixSlotTableMgr sorted by Id, CheckCondition(row.UnlockCondition, false)
 //                  (season_talent_insert_window_view.lua:618-634)
@@ -28,7 +31,7 @@ namespace Stellar.AutoManifest;
 // ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
 public sealed partial class Plugin
 {
-    private const int LuaScriptVersion = 2;
+    private const int LuaScriptVersion = 3;
 
     private const string LuaScript = @"pcall(function()
 local M = {}
@@ -94,8 +97,37 @@ function M.state()
     if Z.ConditionHelper.CheckCondition(s.UnlockCondition, false) then mask[i] = '1' else mask[i] = '0' end
   end
   local prof = Z.VMMgr.GetVM('profession'):GetProfessionDropId() or 0
+  -- Level gate per level (1-based): '1' = at or below the current level, or its UnlockCondition passes now.
+  local lvmask = {}
+  for l = 1, 99 do
+    local r = levelRow(sid, l)
+    if r == nil then break end
+    if l <= lv or Z.ConditionHelper.CheckCondition(r.UnlockCondition, false) then lvmask[l] = '1' else lvmask[l] = '0' end
+  end
+  local exp = 0
+  if sd and sd.exp then exp = sd.exp end
   rawset(_G, '__stam_s', table.concat({ '1', sid, lv, rd.storeEntryLimit or 0, stored, count(REM), count(BLESS), cost,
-    ok1 and 1 or 0, ok10 and 1 or 0, bless and 1 or 0, prof, table.concat(mask) }, '|') .. '|')
+    ok1 and 1 or 0, ok10 and 1 or 0, bless and 1 or 0, prof, table.concat(mask), exp, table.concat(lvmask) }, '|') .. '|')
+end
+-- The current season's level table, once per season: 'season,expPerBlessPull;lv,upgradeExp,n2,n3,n4,n5,p2,p3,p4,p5;…'.
+-- NormalWeight / PrimeWeight are indexed BY QUALITY (entry_popup_view.lua:227-236: ipairs → quality), so [2..5] =
+-- Superior..Immortal. ExpAdd = Matrix EXP per Blessing pull (SeasonTalentReforgeItemTable 1220411, 10 in S4).
+function M.levels()
+  local rd, _, sid = reforge()
+  if rd == nil then rawset(_G, '__stam_lv', '') return end
+  local add = 10
+  local ir = tbl('SeasonTalentReforgeItemTableMgr').GetRow(BLESS, true)
+  if ir and ir.ExpAdd then add = ir.ExpAdd end
+  local out = { sid .. ',' .. add }
+  for l = 1, 99 do
+    local r = levelRow(sid, l)
+    if r == nil then break end
+    local f = { l, r.UpgradeExp or 0 }
+    for q = 2, 5 do f[#f + 1] = (r.NormalWeight and r.NormalWeight[q]) or 0 end
+    for q = 2, 5 do f[#f + 1] = (r.PrimeWeight and r.PrimeWeight[q]) or 0 end
+    out[#out + 1] = table.concat(f, ',')
+  end
+  rawset(_G, '__stam_lv', table.concat(out, ';'))
 end
 function M.results()
   local rd, sd = reforge()
@@ -237,6 +269,6 @@ function M.prof(id)
   rawset(_G, '__stam_prof', n)
 end
 rawset(_G, '__stam', M)
-rawset(_G, '__stam_v', 2)   -- = LuaScriptVersion: bump both together
+rawset(_G, '__stam_v', 3)   -- = LuaScriptVersion: bump both together
 end)";
 }

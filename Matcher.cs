@@ -11,6 +11,7 @@ internal sealed class Target
     public int Group;
     public int MinStep;             // 0-based index into Imprint.Steps
     public string? StoredText;      // set when this run stored an imprint for this row
+    public int Need;                // reachability (Plugin.Reach.cs): 0 = can roll now, N = first Matrix level, -1 = locked
     public bool Stored => StoredText != null;
 }
 
@@ -25,13 +26,18 @@ internal sealed class ReforgeState
     public bool BlessAllowed;       // mirrors the game's canUseBlessingMaterial
     public int Profession;          // looting class (GetProfessionDropId)
     public bool[] RowUnlocked = Array.Empty<bool>();
+    public int Exp;                 // Matrix EXP inside the current level (out of that level's UpgradeExp)
+    public string LevelMask = string.Empty;   // per level from Lv 1: '1' = at or below the level, or its UnlockCondition passes
+
+    // Level `level` can be reached now as far as its gate goes (false past the table).
+    public bool LevelOpen(int level) => level >= 1 && level <= LevelMask.Length && LevelMask[level - 1] == '1';
 
     public static ReforgeState Parse(string? s)
     {
         var st = new ReforgeState();
         if (string.IsNullOrEmpty(s)) return st;
         var f = s.Split('|');
-        if (f.Length < 14 || f[0] != "1") return st;
+        if (f.Length < 16 || f[0] != "1") return st;
         st.SeasonId = I(f[1]); st.Level = I(f[2]); st.StoreLimit = I(f[3]); st.Stored = I(f[4]);
         st.Remnants = L(f[5]); st.Prisms = L(f[6]); st.CostPerPull = I(f[7]);
         st.ConsumeOk1 = f[8] == "1"; st.ConsumeOk10 = f[9] == "1"; st.BlessAllowed = f[10] == "1";
@@ -39,6 +45,8 @@ internal sealed class ReforgeState
         var mask = f[12];
         st.RowUnlocked = new bool[mask.Length];
         for (int i = 0; i < mask.Length; i++) st.RowUnlocked[i] = mask[i] == '1';
+        st.Exp = I(f[13]);
+        st.LevelMask = f[14];
         st.Valid = true;
         return st;
     }
