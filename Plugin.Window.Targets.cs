@@ -145,8 +145,7 @@ public sealed partial class Plugin
             CornerRadius = RoundRadius(QualityBarW), PaddingX = 0f, PaddingY = 0f,
         };
 
-        var name = new CellElement(new TextElement(() => TargetName(idx), Color: () => TextColor(), NoWrap: true)
-            { Ellipsize = true }, Weight: 1f);
+        var name = new CellElement(NameLine(() => TargetName(idx), TextColor), Weight: 1f);   // tag-safe cut (ImprintLine)
 
         // Changing the minimum is ignored while a run is going (SetTargetMin) — the dropdown has no disabled look.
         var min = new CellElement(new DropdownElement(() => TargetMin(idx), () => TargetOptions(idx), s => SetTargetMin(idx, s),

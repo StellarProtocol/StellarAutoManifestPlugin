@@ -65,12 +65,21 @@ public sealed partial class Plugin
     }
 
     // "Name <color=#muted>· kind</color>". kind = a class imprint's effect wording ("Lucky Strike · Oath DMG", parsed
-    // in Lua M.names), else (withCategory) the category label. The picker AND the main-window target rows use it.
+    // in Lua M.names), else (withCategory) the category label. The picker, the main-window target rows and the pocket
+    // rows use it. ⚠️ Every TextElement that shows it must set RichEmoji = true (see NameLine): the plain uGUI
+    // Ellipsize cut is tag-blind and cut "Great Crimson Lotus <color=..." mid-tag in a narrow target row (in-game
+    // 2026-11-22); the TMP path's cut never leaves a half-open tag, and since it cuts from the END the muted effect goes
+    // first and the name keeps priority.
     private string ImprintLine(Imprint imp, ColorRgba muted, bool withCategory)
     {
         var cat = imp.Kind.Length > 0 ? imp.Kind : withCategory ? CategoryNameForLib(imp.AttrLibId) : string.Empty;
         return cat.Length == 0 ? imp.Name : imp.Name + " <color=#" + HexOf(muted) + ">· " + cat + "</color>";
     }
+
+    // The one-line, ellipsized "Name · effect" label (ImprintLine). RichEmoji routes it through TextMeshPro, whose cut
+    // is rich-text aware — a single string keeps name and effect on one baseline with no extra layout cells.
+    private static TextElement NameLine(Func<string> text, Func<ColorRgba> color)
+        => new(text, Color: () => color(), NoWrap: true) { RichEmoji = true, Ellipsize = true };
 
     private static string HexOf(ColorRgba c)
         => ((int)(Math.Clamp(c.R, 0f, 1f) * 255f + 0.5f)).ToString("X2") + ((int)(Math.Clamp(c.G, 0f, 1f) * 255f + 0.5f)).ToString("X2")
@@ -83,7 +92,7 @@ public sealed partial class Plugin
         var tile = new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
             {
                 new SpacerElement(0f, PickerTileH),
-                new CellElement(new TextElement(() => PickerLine(slot), Color: () => TextColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
+                new CellElement(NameLine(() => PickerLine(slot), TextColor), Weight: 1f),
                 new TextElement(() => PickAt(slot)?.RangeText ?? string.Empty, Color: () => MutedColor(), Width: PickerRangeW,
                     Align: TextAlign.Right, NoWrap: true, FontSize: 12) { RichEmoji = true, Ellipsize = true },
             }, Gap: 8f),

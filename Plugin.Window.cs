@@ -121,6 +121,8 @@ public sealed partial class Plugin
     // sub-line's line box measured far taller than 11 px and the label's ~20, so the column outgrew the FixedLine strut
     // (a strut is only a MINIMUM) — the row swelled to ~52 px with the label high, the sub-line low and the chip between
     // (in-game 2026-11-22). Pinned, the block is 33 px in the 34 px row, so the window keeps one height in every state.
+    // ⚠️ The Column's Gap must be 0.01, NOT 0: ColumnElement Gap 0 means the framework DEFAULT (SectionGap, 12 px), which
+    // still split the lines 12 px apart and grew the block to 45 px (bridge ui.inspect, 2026-11-22).
     private HudElement SettingRowSub(Func<string> label, Func<string> sub, HudElement control) => FixedLine(SettingRowSubH,
         new RowElement(new HudElement[]
         {
@@ -129,7 +131,7 @@ public sealed partial class Plugin
                 new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true, Height = SubLabelH },
                 new TextElement(sub, Color: () => MutedColor(), NoWrap: true, FontSize: 11)
                     { RichEmoji = true, Ellipsize = true, Height = SubLineH },
-            }, Gap: 0f), Weight: 1f),
+            }, Gap: 0.01f), Weight: 1f),
             control,
         }, Gap: 8f));
 

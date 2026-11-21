@@ -162,8 +162,7 @@ public sealed partial class Plugin
             FillColorFn = () => Fade(PocketQualityColor(slot)),
             CornerRadius = RoundRadius(QualityBarW), PaddingX = 0f, PaddingY = 0f,
         };
-        var name = new CellElement(new TextElement(() => PocketText(_pkName, slot), Color: () => TextColor(), NoWrap: true)
-            { Ellipsize = true }, Weight: 1f);
+        var name = new CellElement(NameLine(() => PocketText(_pkName, slot), TextColor), Weight: 1f);   // tag-safe cut (ImprintLine)
         var value = new TextElement(() => PocketText(_pkValue, slot), Color: () => TextColor(), Width: PocketValueW,
             Align: TextAlign.Right, NoWrap: true) { Ellipsize = true };
         var tag = new CellElement(new ConditionalElement(() => PocketIsTarget(slot),
