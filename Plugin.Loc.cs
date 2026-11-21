@@ -70,6 +70,21 @@ public sealed partial class Plugin
     private const string KeyPickerAddNone  = "am.picker.addNone";
     private const string KeyPickerEmpty    = "am.picker.empty";
     private const string KeyPickerLoading  = "am.picker.loading";
+    // Reachability (spec ⑥, Plugin.Reach.cs)
+    private const string KeyNeedsLv          = "am.targets.needsLv";
+    private const string KeyLocked           = "am.targets.locked";
+    private const string KeyReachNone        = "am.reach.noneNow";
+    private const string KeyReachNoneBless   = "am.reach.noneNowBlessing";
+    private const string KeyReachConfirmOne  = "am.reach.confirmOne";
+    private const string KeyReachConfirmMany = "am.reach.confirmMany";
+    private const string KeyReachItemLv      = "am.reach.itemLv";
+    private const string KeyReachItemLocked  = "am.reach.itemLocked";
+    private const string KeyLogLevelUp       = "am.footer.levelUp";
+    private const string KeyLogLevelUpReach  = "am.footer.levelUpReach";
+    private const string KeyEndNeedOne       = "am.end.needOne";
+    private const string KeyEndNeedMany      = "am.end.needMany";
+    private const string KeyEndLockedOne     = "am.end.lockedOne";
+    private const string KeyEndLockedMany    = "am.end.lockedMany";
 
     // Category chips, in picker order; the game's own Lang('SeasonTalentAttrLibName_<id>') wins when it exists.
     private static readonly int[] CategoryLibIds = { 1001, 101, 102, 103, 104, 105 };

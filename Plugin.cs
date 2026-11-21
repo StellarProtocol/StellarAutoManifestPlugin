@@ -96,9 +96,11 @@ public sealed partial class Plugin : IStellarPlugin
         RefreshMaterialsFromState();
     }
 
-    // Live state side effects: the looting class name (only when the class changes) and the picker's Class list.
+    // Live state side effects: reachability (recomputed only when its inputs move — Plugin.Reach.cs), the looting class
+    // name (only when the class changes) and the picker's Class list.
     private void RefreshMaterialsFromState()
     {
+        UpdateReach();
         if (!_st.Valid || _st.Profession == _profId) return;
         RefreshProfessionName(_st.Profession);
         RefilterPicker();

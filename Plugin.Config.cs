@@ -66,7 +66,7 @@ public sealed partial class Plugin
     }
 
     private void SetPullTen(bool v)       { if (Running || _pullTen == v) return; _pullTen = v; _cfg.Set("pullTen", v); _cfg.Save(); MarkMain(); }
-    private void SetUseBlessing(bool v)   { if (Running) return; _useBlessing = v; _cfg.Set("useBlessing", v); _cfg.Save(); MarkMain(); }
+    private void SetUseBlessing(bool v)   { if (Running) return; _useBlessing = v; _cfg.Set("useBlessing", v); _cfg.Save(); UpdateReach(); MarkMain(); }
 
     private void SetSpendIndex(int i)
     {
@@ -86,6 +86,7 @@ public sealed partial class Plugin
         if (Running || _targets.Count >= MaxTargets) return;
         _targets.Add(new Target { Group = group, MinStep = minStep });
         SaveTargets();
+        TargetsChanged();
         MarkMain();
     }
 
@@ -95,6 +96,7 @@ public sealed partial class Plugin
         _targets.RemoveAt(index);
         _rowHover.Reset();   // the next row slides under the pointer — it must not inherit the hover
         SaveTargets();
+        TargetsChanged();
         MarkMain();
     }
 
@@ -103,7 +105,15 @@ public sealed partial class Plugin
         if (Running || index < 0 || index >= _targets.Count) return;
         _targets[index].MinStep = step;
         SaveTargets();
+        TargetsChanged();
         MarkMain();
+    }
+
+    // Any change to the target list re-runs the reachability pass (Plugin.Reach.cs) — on change, never per frame.
+    private void TargetsChanged()
+    {
+        _targetsVer++;
+        UpdateReach();
     }
 
     // Clamp saved steps to the live table once it is loaded (a season change can shorten a ladder).
@@ -113,5 +123,6 @@ public sealed partial class Plugin
         foreach (var t in _targets)
             if (_catalog.ByGroup.TryGetValue(t.Group, out var imp) && imp.Steps.Length > 0)
                 t.MinStep = Math.Clamp(t.MinStep, 0, imp.Steps.Length - 1);
+        TargetsChanged();
     }
 }

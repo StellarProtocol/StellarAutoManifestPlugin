@@ -174,12 +174,16 @@ public sealed partial class Plugin
             PillButton(() => _loc.T(KeyStop), PillKind.Danger, OnStopClicked, StartPillW, WindowBg, () => !_stopRequested),
             PillButton(() => _loc.T(KeyStart), PillKind.Primary, OnStartClicked, StartPillW, WindowBg, CanStart)),
             Width: StartPillW),
-        new CellElement(new ConditionalElement(() => !Running && _endReason != EndReason.None,
-            new RowElement(new HudElement[]
-            {
-                Badge(EndBadgeText, EndBadgeColor, WindowBg, EndBadgeW),
-                new CellElement(SmallText(EndLineText, MutedColor), Weight: 1f),
-            }, Gap: 6f),
-            SmallText(FooterText, MutedColor)), Weight: 1f),
+        // Start gated by reachability (spec ⑥) → the amber reason wins the line. 11 px and WRAPPING (no NoWrap / Width):
+        // the sentence needs two lines in the 298 px cell, which fit the 28 px footer.
+        new CellElement(new ConditionalElement(() => !Running && ReachBlocksStart(),
+            new TextElement(GateText, Color: () => GateColor(), FontSize: 11) { RichEmoji = true },
+            new ConditionalElement(() => !Running && _endReason != EndReason.None,
+                new RowElement(new HudElement[]
+                {
+                    Badge(EndBadgeText, EndBadgeColor, WindowBg, EndBadgeW),
+                    new CellElement(SmallText(EndLineText, MutedColor), Weight: 1f),
+                }, Gap: 6f),
+                SmallText(FooterText, MutedColor))), Weight: 1f),
     }, Gap: 10f));
 }

@@ -49,8 +49,9 @@ public sealed partial class Plugin
     private StorePlan _plan;
 
     // ── start / stop ──────────────────────────────────────────────────────────────────────────────────────────────
-    // Startable with at least one target the live table knows (a finished run's "stored" rows wait again on the next start).
-    private bool CanStart() => !Running && _catalogReady && _st.Valid && InWorld() && KnownTargetCount() > 0;
+    // Startable with at least one target the live table knows (a finished run's "stored" rows wait again on the next start),
+    // and not when NONE of them can roll at the current level (spec ⑥ — the footer then says why, Plugin.Reach.cs).
+    private bool CanStart() => !Running && _catalogReady && _st.Valid && InWorld() && KnownTargetCount() > 0 && !ReachBlocksStart();
 
     private int KnownTargetCount()
     {
@@ -73,6 +74,7 @@ public sealed partial class Plugin
         _confirm.Show(new ConfirmRequest(_loc.T(KeyConfirmTitle), ConfirmBody(), BeginRun)
         {
             ConfirmLabel = _loc.T(KeyStart), CancelLabel = _loc.T(KeyCancel), Severity = ConfirmSeverity.Primary,
+            Emphasis = ConfirmReachLine(),   // amber "2 targets can't roll at Lv 2 yet: …" (null = all can roll now)
         });
     }
 
@@ -102,7 +104,8 @@ public sealed partial class Plugin
         SetFooter(FooterEvent.Starting);
         _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} blessing={_useBlessing}"
                            + $"(allowed={_st.BlessAllowed}) spendLimit={SpendLimit} keepFree={KeepFree} level={_st.Level} "
-                           + $"pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms}");
+                           + $"pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms} exp={_st.Exp} "
+                           + $"reachableNow={_reachableTargets} unreachable={_unreachTargets}");
         Enter(RunPhase.Cycle);
     }
 
@@ -277,6 +280,7 @@ public sealed partial class Plugin
         _endReason = reason;
         _endPulls = _runPulls; _endSpent = _runSpent;
         _endStored = _st.Stored; _endLimit = _st.StoreLimit; _endWaiting = WaitingCount();
+        CaptureEndReach();
         _endComposed.Invalidate();
         _services.Log.Info($"[AutoManifest] run end: {reason} pulls={_runPulls} spent={_runSpent} pocket={_st.Stored}/{_st.StoreLimit} "
                            + $"waiting={_endWaiting} targets={DescribeTargets()}");

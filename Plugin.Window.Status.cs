@@ -31,16 +31,21 @@ public sealed partial class Plugin
     }
 
     // ── footer log line (running) / last run (idle, before any run) ───────────────────────────────────────────────
-    private enum FooterEvent : byte { None, Starting, Stopping, Pull, Stored }
+    private enum FooterEvent : byte { None, Starting, Stopping, Pull, Stored, LevelUp }
 
     private FooterEvent _fbEvent;
     private int _fbPull, _fbEntry, _fbStored, _fbLimit, _fbVer, _fbBuiltVer = -1, _fbBuiltGen = -1;
     private string _fbText = string.Empty;
+    private int _fbFrom, _fbTo;
+    private string _fbNames = string.Empty;
+    private float _fbHoldUntil;
+    private const float LevelUpHoldS = 4f;   // the level-up line outlives the next pull lines (they come ~1 s apart)
 
     private void SetFooter(FooterEvent ev, int entryId = 0)
     {
         // "Stopping…" stays until the run ends; a later pull/store line must not hide that the stop was heard.
         if (_stopRequested && ev != FooterEvent.Stopping) ev = FooterEvent.Stopping;
+        if (_fbEvent == FooterEvent.LevelUp && ev == FooterEvent.Pull && FwNow < _fbHoldUntil) return;
         _fbEvent = ev; _fbPull = _runPulls; _fbEntry = entryId; _fbStored = _st.Stored; _fbLimit = _st.StoreLimit;
         _fbVer++;
         MarkMain();
@@ -56,8 +61,19 @@ public sealed partial class Plugin
             FooterEvent.Stopping => _loc.T(KeyLogStopping),
             FooterEvent.Pull     => _loc.TFormat(KeyLogPull, _fbPull, _fbStored, _fbLimit),
             FooterEvent.Stored   => _loc.TFormat(KeyLogStored, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), _fbStored, _fbLimit),
+            FooterEvent.LevelUp  => _fbNames.Length > 0 ? _loc.TFormat(KeyLogLevelUpReach, _fbFrom, _fbTo, _fbNames)
+                                                    : _loc.TFormat(KeyLogLevelUp, _fbFrom, _fbTo),
             _                    => _loc.T(KeyLogStarting),
         };
+    }
+
+    // "Matrix Lv 3 to Lv 4 · Soaring Flame can roll now" ("to", not an arrow glyph: it draws blank in the game font).
+    private void SetFooterLevelUp(int from, int to, string names)
+    {
+        if (_stopRequested) return;
+        _fbFrom = from; _fbTo = to; _fbNames = names;
+        SetFooter(FooterEvent.LevelUp);
+        _fbHoldUntil = FwNow + LevelUpHoldS;
     }
 
     private string EntryName(int entryId)
@@ -69,7 +85,9 @@ public sealed partial class Plugin
 
     private string EndLineText() => _endComposed.Get(_langGen);
 
-    private string ComposeEndLine() => _endReason switch
+    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix();
+
+    private string ComposeEndReason() => _endReason switch
     {
         EndReason.AllStored    => _loc.TFormat(KeyEndAllStored, KnownTargetCount(), _endPulls, N0(_endSpent)),
         EndReason.PocketFull   => _endWaiting == 1

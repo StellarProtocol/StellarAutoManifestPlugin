@@ -7,7 +7,7 @@ namespace Stellar.AutoManifest;
 /// <summary>
 /// The TARGETS list (approved ①): one raised tile per target row in a fixed 5-row viewport that scrolls past 5, with
 /// reserved empty slots below the real rows so the list keeps its height (house rules 14/15). A row is
-///   [4 px quality bar | imprint name | "v+" pill dropdown | waiting / stored badge | icon-only ✕]
+///   [4 px quality bar | imprint name | "v+" pill dropdown | waiting / stored / needs Lv N / locked badge | icon-only ✕]
 /// The quality bar takes the colour of the chosen minimum's quality; the dropdown lists exactly the game's rollable
 /// steps; ✕ removes at once. Rows are built ONCE into a fixed pool (<see cref="MaxTargets"/>) and read live.
 /// <para>⚠️ Toolkit-forced size: the approved row is a 26 px tile, but the framework's Pill dropdown trigger is a fixed
@@ -121,7 +121,9 @@ public sealed partial class Plugin
 
         var badge = new CellElement(new ConditionalElement(() => TargetAt(idx)?.Stored == true,
             Badge(() => StoredLabel(idx), SuccessColor, TileColor, TargetBadgeW),
-            Badge(() => _loc.T(KeyWaiting), MutedColor, TileColor, TargetBadgeW, muted: true)), Width: TargetBadgeW);
+            new ConditionalElement(() => TargetNeed(idx) != 0,
+                Badge(() => NeedLabel(idx), CautionColor, TileColor, TargetBadgeW),   // "needs Lv 4" / "locked" (Plugin.Reach.cs)
+                Badge(() => _loc.T(KeyWaiting), MutedColor, TileColor, TargetBadgeW, muted: true))), Width: TargetBadgeW);
 
         var remove = CrossButton(() => _rowHover.Remove[idx], over => _rowHover.Remove[idx] = over,
             () => RemoveTarget(idx), TileColor, danger: true, enabled: () => !Running);
