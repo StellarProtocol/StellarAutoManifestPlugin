@@ -45,13 +45,15 @@ public sealed partial class Plugin
     private bool _rollBless;
     private string _sigBefore = string.Empty;
     private ReforgeState _st = new();
+    private ReforgeState _storeBefore = new();
     private ReforgeResults _res = new();
     private StorePlan _plan;
 
     // ── start / stop ──────────────────────────────────────────────────────────────────────────────────────────────
-    // Startable with at least one target the live table knows (a finished run's "stored" rows wait again on the next start),
+    // Startable with at least one WAITING target the live table knows (a "stored" row stays stored across runs and restarts
+    // while the pocket still holds its imprint — Plugin.StoredMarks.cs),
     // and not when NONE of them can roll at the current level (spec ⑥ — the footer then says why, Plugin.Reach.cs).
-    private bool CanStart() => !Running && _catalogReady && _st.Valid && InWorld() && KnownTargetCount() > 0 && !ReachBlocksStart();
+    private bool CanStart() => !Running && _catalogReady && _st.Valid && InWorld() && WaitingCount() > 0 && !ReachBlocksStart();
 
     private int KnownTargetCount()
     {
@@ -97,7 +99,6 @@ public sealed partial class Plugin
     private void BeginRun()
     {
         if (!CanStart()) return;
-        foreach (var t in _targets) t.StoredText = null;   // a new run: every row waits again
         _runPulls = 0; _runSpent = 0; _stopRequested = false;
         _lastReplyAt = float.NegativeInfinity;
         _endReason = EndReason.None;
@@ -221,6 +222,7 @@ public sealed partial class Plugin
         _plan = p;
         _sigBefore = _res.Signature;
         _storedBefore = _st.Stored;
+        _storeBefore = _st;   // its pocket = the "before" side of the uuid diff (Plugin.StoredMarks.cs)
         _services.Log.Info($"[AutoManifest] store → pull={p.Pull + 1} row={p.Row + 1} (idx {p.Pull},{p.Row}) entry={p.EntryId} "
                            + $"{EntryText(p.EntryId)} for target #{p.TargetIndex + 1} pocket={_st.Stored}/{_st.StoreLimit}");
         if (!StartStore(p.Pull, p.Row)) { End(EndReason.LeftWorld); return; }
@@ -238,7 +240,7 @@ public sealed partial class Plugin
         _services.Log.Info($"[AutoManifest] store ← ret={ret}{ErrSuffix(ret)} after {(now - _phaseAt) * 1000f:0} ms");
         if (ret == StorageFullCode) { End(EndReason.PocketFull); return; }
         if (ret != 0) { End(EndReason.StoreRefused); return; }
-        if (_plan.TargetIndex < _targets.Count) _targets[_plan.TargetIndex].StoredText = ValueOf(_plan.EntryId);
+        MarkStored(_plan.TargetIndex, _plan.EntryId, _storeBefore);
         Enter(RunPhase.AwaitStore);
         AwaitStoreSync(now);
     }

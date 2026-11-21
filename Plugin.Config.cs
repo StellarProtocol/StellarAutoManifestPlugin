@@ -42,14 +42,18 @@ public sealed partial class Plugin
         if (_spendIndex < 0) _spendIndex = DefaultSpendIndex;   // a value no longer offered → the default
         _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
 
-        // "group:step,group:step" — a stale group (another season's table) is kept and simply never matches; it shows
+        // "group:step[:mark],…" — a stale group (another season's table) is kept and simply never matches; it shows
         // as "#<group>" until removed.
         _targets.Clear();
         foreach (var part in (_cfg.Get("targets", string.Empty) ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split(':');
-            if (kv.Length == 2 && int.TryParse(kv[0], out var g) && int.TryParse(kv[1], out var s) && _targets.Count < MaxTargets)
-                _targets.Add(new Target { Group = g, MinStep = Math.Max(0, s) });
+            if (kv.Length >= 2 && int.TryParse(kv[0], out var g) && int.TryParse(kv[1], out var s) && _targets.Count < MaxTargets)
+            {
+                var t = new Target { Group = g, MinStep = Math.Max(0, s) };
+                ReadMark(kv, t);   // optional stored mark (Plugin.StoredMarks.cs), checked against the pocket later
+                _targets.Add(t);
+            }
         }
     }
 
@@ -60,6 +64,7 @@ public sealed partial class Plugin
         {
             if (sb.Length > 0) sb.Append(',');
             sb.Append(t.Group).Append(':').Append(t.MinStep);
+            AppendMark(sb, t);
         }
         _cfg.Set("targets", sb.ToString());
         _cfg.Save();
@@ -93,7 +98,9 @@ public sealed partial class Plugin
     private void RemoveTarget(int index)
     {
         if (Running || index < 0 || index >= _targets.Count) return;
-        _targets.RemoveAt(index);
+        _targets.RemoveAt(index);   // its stored mark goes with it
+        if (_pendingMark == index) { _pendingMark = -1; _pocketBefore = null; }
+        else if (_pendingMark > index) _pendingMark--;
         _rowHover.Reset();   // the next row slides under the pointer — it must not inherit the hover
         SaveTargets();
         TargetsChanged();
@@ -103,7 +110,15 @@ public sealed partial class Plugin
     private void SetTargetMin(int index, int step)
     {
         if (Running || index < 0 || index >= _targets.Count) return;
-        _targets[index].MinStep = step;
+        var t = _targets[index];
+        if (t.MinStep == step) return;
+        t.MinStep = step;
+        if (t.HasMark)   // a new minimum = a new goal: the stored imprint no longer answers it
+        {
+            t.ClearMark();
+            if (_pendingMark == index) { _pendingMark = -1; _pocketBefore = null; }
+            _marksVer++;
+        }
         SaveTargets();
         TargetsChanged();
         MarkMain();

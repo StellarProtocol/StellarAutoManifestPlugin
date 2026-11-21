@@ -5,14 +5,28 @@ using System.Globalization;
 namespace Stellar.AutoManifest;
 
 /// <summary>One target row: "imprint <see cref="Group"/> at value step <see cref="MinStep"/> or higher". Two rows with
-/// the same imprint = two stores. <see cref="StoredText"/> is this run's stored value (null = waiting).</summary>
+/// the same imprint = two stores. The stored MARK (persisted with the row, Plugin.StoredMarks.cs) names the pocket entry
+/// the plugin stored for it: character + season + the entry's uuid + entryId + value text. It counts as stored
+/// (<see cref="Stored"/>) only while <see cref="Active"/> — i.e. the CURRENT character's pocket still holds that uuid.</summary>
 internal sealed class Target
 {
     public int Group;
     public int MinStep;             // 0-based index into Imprint.Steps
-    public string? StoredText;      // set when this run stored an imprint for this row
     public int Need;                // reachability (Plugin.Reach.cs): 0 = can roll now, N = first Matrix level, -1 = locked
-    public bool Stored => StoredText != null;
+
+    public string? MarkText;        // the stored value text ("2.72%"); null = no mark
+    public string MarkChar = string.Empty;   // CharSerialize.charId of the pocket it went into
+    public int MarkSeason, MarkUuid, MarkEntry;   // MarkUuid 0 = stored this session, uuid not resolved yet
+    public bool Active;             // the mark is confirmed in the current character's pocket (or pending this session)
+
+    public bool HasMark => MarkText != null;
+    public bool Stored => Active && MarkText != null;
+    public string? StoredText => Stored ? MarkText : null;
+
+    public void ClearMark()
+    {
+        MarkText = null; MarkChar = string.Empty; MarkSeason = MarkUuid = MarkEntry = 0; Active = false;
+    }
 }
 
 /// <summary>The live Manifestation state, parsed from Lua <c>M.state()</c> (one '|'-separated line).</summary>
@@ -28,11 +42,29 @@ internal sealed class ReforgeState
     public bool[] RowUnlocked = Array.Empty<bool>();
     public int Exp;                 // Matrix EXP inside the current level (out of that level's UpgradeExp)
     public string LevelMask = string.Empty;   // per level from Lv 1: '1' = at or below the level, or its UnlockCondition passes
+    public string CharId = string.Empty;      // CharSerialize.charId ("" / "0" = unknown)
+    public bool HasPocket;                    // the pocket list below was read (script v4+)
+    public string PocketSrc = string.Empty;   // raw "uuid:entryId,…" — reused arrays when unchanged
+    public int[] PocketUuid = Array.Empty<int>(), PocketEntry = Array.Empty<int>();   // stored entries (entryId ≠ 0)
+
+    public bool PocketHolds(int uuid, int entryId)
+    {
+        for (int i = 0; i < PocketUuid.Length; i++) if (PocketUuid[i] == uuid && PocketEntry[i] == entryId) return true;
+        return false;
+    }
+
+    public bool PocketHasUuid(int uuid)
+    {
+        for (int i = 0; i < PocketUuid.Length; i++) if (PocketUuid[i] == uuid) return true;
+        return false;
+    }
 
     // Level `level` can be reached now as far as its gate goes (false past the table).
     public bool LevelOpen(int level) => level >= 1 && level <= LevelMask.Length && LevelMask[level - 1] == '1';
 
-    public static ReforgeState Parse(string? s)
+    // `prev` = the last parsed state: its pocket arrays are reused when the pocket text is unchanged (the common case at
+    // the 1 Hz idle read — Plugin-Performance-Rules §2).
+    public static ReforgeState Parse(string? s, ReforgeState? prev = null)
     {
         var st = new ReforgeState();
         if (string.IsNullOrEmpty(s)) return st;
@@ -47,8 +79,33 @@ internal sealed class ReforgeState
         for (int i = 0; i < mask.Length; i++) st.RowUnlocked[i] = mask[i] == '1';
         st.Exp = I(f[13]);
         st.LevelMask = f[14];
+        if (f.Length >= 18)
+        {
+            st.CharId = f[15];
+            st.HasPocket = true;
+            if (prev != null && prev.HasPocket && prev.PocketSrc == f[16])
+            {
+                st.PocketSrc = prev.PocketSrc; st.PocketUuid = prev.PocketUuid; st.PocketEntry = prev.PocketEntry;
+            }
+            else ParsePocket(st, f[16]);
+        }
         st.Valid = true;
         return st;
+    }
+
+    private static void ParsePocket(ReforgeState st, string src)
+    {
+        st.PocketSrc = src;
+        var parts = src.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        st.PocketUuid = new int[parts.Length];
+        st.PocketEntry = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++)
+        {
+            int c = parts[i].IndexOf(':');
+            if (c <= 0) continue;
+            st.PocketUuid[i] = I(parts[i].Substring(0, c));
+            st.PocketEntry[i] = I(parts[i].Substring(c + 1));
+        }
     }
 
     private static int I(string s) => (int)L(s);

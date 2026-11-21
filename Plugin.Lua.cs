@@ -44,7 +44,7 @@ public sealed partial class Plugin
     {
         if (!EnsureLua()) return new ReforgeState();
         _services.Lua.DoString(CallState);
-        return ReforgeState.Parse(_services.Lua.ReadGlobalString("__stam_s"));
+        return ReforgeState.Parse(_services.Lua.ReadGlobalString("__stam_s"), _st);
     }
 
     // The current season's level table (weights, EXP per level). Static game data: read once per season (Plugin.Reach.cs).

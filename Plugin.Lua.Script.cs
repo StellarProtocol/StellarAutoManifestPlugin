@@ -21,6 +21,10 @@ namespace Stellar.AutoManifest;
 //   roll           GetVM('season_talent_entry').AsyncSeasonTalentReforge(blessRows, times, token) (entry_vm.lua:246-260);
 //                  blessRows = { SeasonTalentReforgeItemTableMgr.GetRow(1220411) } (refine_sub_view.lua:589-599, 693)
 //   store          …AcyncStoreSeasonTalentReforgeEntry(pull0, row0, token) — "Acync" typo is real (entry_vm.lua:186)
+//   pocket / char  sd.storeEntries = map of {uuid, entryId} (zcontainer/season_talent_stored_entry.lua: uuid field 1,
+//                  entryId field 2); the store reply is `ret` only (world_proxy.lua:13897-13944 returns pbRet.ret), so
+//                  the new entry's uuid comes from diffing the pocket around a store; CharSerialize.charId
+//                  (zcontainer/char_serialize.lua:9-15, int64)
 //   owned count    GetVM('items').GetItemTotalCount(id) (items_vm.lua:335)
 //   looting class  GetVM('profession'):GetProfessionDropId() (profession_vm.lua:94) → ProfessionSystemTableMgr.Name (:113)
 //   names / values GetVM('season_talent_entry').GetReforgeEntryAttrName(row) / GetReforgeEntryAttrValueText(row)
@@ -31,7 +35,7 @@ namespace Stellar.AutoManifest;
 // ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
 public sealed partial class Plugin
 {
-    private const int LuaScriptVersion = 3;
+    private const int LuaScriptVersion = 4;
 
     private const string LuaScript = @"pcall(function()
 local M = {}
@@ -76,10 +80,20 @@ function M.state()
   if rd == nil then rawset(_G, '__stam_s', '0') return end
   local lv = 1
   if sd and sd.level then lv = sd.level end
-  local stored = 0
+  -- Pocket: every stored entry as uuid:entryId. C# diffs it around a store to learn the new entry's uuid (the store
+  -- reply is ret only) and checks a saved mark against it. Counted like the pocket view: entryId ~= 0.
+  local stored, pocket = 0, {}
   if sd and sd.storeEntries then
-    for _, e in pairs(sd.storeEntries) do if e.entryId ~= 0 then stored = stored + 1 end end
+    for _, e in pairs(sd.storeEntries) do
+      if e.entryId ~= 0 then
+        stored = stored + 1
+        pocket[#pocket + 1] = tostring(e.uuid or 0) .. ':' .. tostring(e.entryId)
+      end
+    end
   end
+  local cs = Z.ContainerMgr.CharSerialize
+  local cid = '0'
+  if cs and cs.charId then cid = tostring(cs.charId) end
   local row = levelRow(sid, lv)
   local cost, ok1, ok10 = 0, row ~= nil, row ~= nil
   if row then
@@ -107,7 +121,8 @@ function M.state()
   local exp = 0
   if sd and sd.exp then exp = sd.exp end
   rawset(_G, '__stam_s', table.concat({ '1', sid, lv, rd.storeEntryLimit or 0, stored, count(REM), count(BLESS), cost,
-    ok1 and 1 or 0, ok10 and 1 or 0, bless and 1 or 0, prof, table.concat(mask), exp, table.concat(lvmask) }, '|') .. '|')
+    ok1 and 1 or 0, ok10 and 1 or 0, bless and 1 or 0, prof, table.concat(mask), exp, table.concat(lvmask), cid,
+    table.concat(pocket, ',') }, '|') .. '|')
 end
 -- The current season's level table, once per season: 'season,expPerBlessPull;lv,upgradeExp,n2,n3,n4,n5,p2,p3,p4,p5;…'.
 -- NormalWeight / PrimeWeight are indexed BY QUALITY (entry_popup_view.lua:227-236: ipairs → quality), so [2..5] =
@@ -269,6 +284,6 @@ function M.prof(id)
   rawset(_G, '__stam_prof', n)
 end
 rawset(_G, '__stam', M)
-rawset(_G, '__stam_v', 3)   -- = LuaScriptVersion: bump both together
+rawset(_G, '__stam_v', 4)   -- = LuaScriptVersion: bump both together
 end)";
 }

@@ -96,10 +96,11 @@ public sealed partial class Plugin : IStellarPlugin
         RefreshMaterialsFromState();
     }
 
-    // Live state side effects: reachability (recomputed only when its inputs move — Plugin.Reach.cs), the looting class
+    // Live state side effects: the stored marks, reachability (recomputed only when its inputs move — Plugin.Reach.cs), the looting class
     // name (only when the class changes) and the picker's Class list.
     private void RefreshMaterialsFromState()
     {
+        ValidateMarks();   // stored marks vs the current pocket (Plugin.StoredMarks.cs) — they feed the reach counts
         UpdateReach();
         if (!_st.Valid || _st.Profession == _profId) return;
         RefreshProfessionName(_st.Profession);
@@ -136,5 +137,6 @@ public sealed partial class Plugin : IStellarPlugin
         ClosePicker();
         if (_mainWindow.IsShown) _mainWindow.SetVisible(false);
         _profId = -1;
+        SuspendMarks();   // the next login may be another character: re-check every mark against its pocket
     }
 }
