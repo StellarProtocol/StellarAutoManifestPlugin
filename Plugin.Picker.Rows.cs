@@ -6,7 +6,7 @@ namespace Stellar.AutoManifest;
 
 /// <summary>
 /// The picker's imprint list (a <see cref="VirtualListElement"/> over the filtered imprints: 26 px tiles + 2 px gap =
-/// 28 pitch, 6 rows visible) and its MINIMUM VALUE step chips (one per rollable step, coloured by quality, the selected
+/// 28 pitch, 4 rows visible) and its MINIMUM VALUE step chips (one per rollable step, coloured by quality, the selected
 /// one ringed in the accent). The list row reads "Name · category" with the category muted (rich-text colour span,
 /// rebuilt per slot only when the imprint, the language or the muted colour changes) and the full range right-aligned.
 /// </summary>
@@ -15,7 +15,8 @@ public sealed partial class Plugin
     private const int   PickerPool     = 9;
     private const float PickerTileH    = 26f;
     private const float PickerPitch    = 28f;
-    private const float PickerListH    = 6 * PickerPitch - 2f;   // 166
+    // 4 rows (was 6): the reachability odds panel (spec ⑥) took the two rows' height, so the picker barely grows.
+    private const float PickerListH    = 4 * PickerPitch - 2f;   // 110
     private const float PickerRangeW   = 120f;
     private const int   MaxStepChips   = 11;
     private const float StepChipW      = 43f;                    // 11 × 43 + 10 × 2 = 493
@@ -107,7 +108,8 @@ public sealed partial class Plugin
             var chip = new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
                 {
                     new SpacerElement(0f, ChipHeight),
-                    new TextElement(() => StepAt(k)?.ValueText ?? string.Empty, Color: () => ink.Get(Col(), Wash(Col(), WindowBg()), PillMinContrast),
+                    new TextElement(() => StepAt(k)?.ValueText ?? string.Empty,
+                        Color: () => FadeIfUnreachable(k, ink.Get(Col(), Wash(Col(), WindowBg()), PillMinContrast)),   // can't roll now → faded
                         Width: StepChipW - 4f, Align: TextAlign.Center, NoWrap: true, FontSize: 11) { Bold = true, Ellipsize = true, CenterCaps = true },
                 }, Gap: 0.01f, Justify: RowJustify.Center),
                 OnClick: () => { if (StepAt(k) != null) { _pickStep = k; _pickerWindow.MarkDirty(); } })

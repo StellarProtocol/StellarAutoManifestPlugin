@@ -85,6 +85,13 @@ public sealed partial class Plugin
     private const string KeyEndNeedMany      = "am.end.needMany";
     private const string KeyEndLockedOne     = "am.end.lockedOne";
     private const string KeyEndLockedMany    = "am.end.lockedMany";
+    private const string KeyOddsOn           = "am.picker.oddsOn";
+    private const string KeyOddsOff          = "am.picker.oddsOff";
+    private const string KeyHintBoth         = "am.picker.hintBoth";
+    private const string KeyHintBless        = "am.picker.hintBlessing";
+    private const string KeyHintNormal       = "am.picker.hintNoBlessing";
+    private const string KeyHintNowBless     = "am.picker.hintNowBlessing";
+    private const string KeyHintLocked       = "am.picker.hintLocked";
 
     // Category chips, in picker order; the game's own Lang('SeasonTalentAttrLibName_<id>') wins when it exists.
     private static readonly int[] CategoryLibIds = { 1001, 101, 102, 103, 104, 105 };

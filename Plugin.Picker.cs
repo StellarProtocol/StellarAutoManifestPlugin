@@ -13,7 +13,9 @@ namespace Stellar.AutoManifest;
 ///   search ("Search imprints…")
 ///   imprint list: "Name · kind" (class effect text, else category) + muted full range; selected row = accent outline
 ///   MINIMUM VALUE (hint "every value the game can roll"): one chip per rollable step, coloured by quality
-///   legend "Superior · Excellent · Epic · Immortal — picks this value or higher"
+///   legend "Superior · Excellent · Epic · Immortal — picks this value or higher" — or, when the selected value can't
+///   roll at the current Matrix level, the amber reachability hint in the same slot (spec ⑥)
+///   odds panel "QUALITY CHANCE PER ROW · Lv 2 · Blessing on" (spec ⑥, Plugin.Picker.Reach.cs)
 ///   Primary "Add “Name v+”" + Neutral Cancel
 /// Widened to 520 (house rule 18) so the 11 value chips fit one line at a readable size. Rows / chips:
 /// <c>Plugin.Picker.Rows.cs</c>. The filtered list is rebuilt on a category / search / class / catalogue change only.
@@ -72,7 +74,8 @@ public sealed partial class Plugin
             new CellElement(SectionHint(() => _loc.T(KeyPickerMinHint), MutedColor), Weight: 1f),
         }, Gap: 8f),
         BuildStepChips(),
-        BuildLegend(),
+        BuildPickHintOrLegend(),   // amber "Epic can't roll at Lv 2. …" replaces the legend while it applies
+        BuildOddsPanel(),          // QUALITY CHANCE PER ROW · Lv 2 · Blessing on (Plugin.Picker.Reach.cs)
         new RowElement(new HudElement[]
         {
             PillButton(AddLabel, PillKind.Primary, AddFromPicker, PickerContentW - CancelPillW - 8f, WindowBg,
