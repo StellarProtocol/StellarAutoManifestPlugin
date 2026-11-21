@@ -9,7 +9,7 @@ namespace Stellar.AutoManifest;
 /// The Auto Manifestation window, house style (approved prototype 2026-11-21, <c>automanifest-APPROVED.md</c> ①/④).
 /// Top → bottom:
 ///   ToolHeader [40 px accent tile | bold title / ONE live status line / thin spent-vs-limit bar while running]
-///   TARGETS    hint "stops when all are stored" · 5 reserved rows, scrolling past 5 · "+ Add target"
+///   TARGETS    hint "stops when all are stored" · 7 reserved rows, scrolling past 7 · "+ Add target"
 ///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Keep better rolls On/Off
 ///              (+ muted sub-line) · spend limit · keep free
 ///   MATERIALS  hint "live" · Remnant / Dawn Prism counts
@@ -20,7 +20,7 @@ namespace Stellar.AutoManifest;
 /// </summary>
 public sealed partial class Plugin
 {
-    private const float WindowWidth = 452f;   // approved ~452; content = 452 − 2 × 12 GlassMenu padding = 428
+    private const float WindowWidth = 512f;   // approved ~452 + 60 (spec ⑧); content = 512 − 2 × 12 GlassMenu padding = 488
     private const float StatusLineH = 16f;
     private const float ProgressH   = 4f;
     private const float SettingRowH = 28f;
@@ -199,7 +199,7 @@ public sealed partial class Plugin
             PillButton(() => _loc.T(KeyStart), PillKind.Primary, OnStartClicked, StartPillW, WindowBg, CanStart)),
             Width: StartPillW),
         // Start gated by reachability (spec ⑥) → the amber reason wins the line. 11 px and WRAPPING (no NoWrap / Width):
-        // the sentence needs two lines in the 298 px cell, which fit the 28 px footer.
+        // the sentence needs two lines in the 358 px cell, which fit the 28 px footer.
         new CellElement(new ConditionalElement(() => !Running && ReachBlocksStart(),
             new TextElement(GateText, Color: () => GateColor(), FontSize: 11) { RichEmoji = true },
             new ConditionalElement(() => !Running && _endReason != EndReason.None,

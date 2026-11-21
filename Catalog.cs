@@ -24,7 +24,7 @@ internal sealed class Imprint
     public int Profession;      // 0 = every class
     public bool IsBuff;         // AttrEffect type 3: value lives in BuffPar, shown as raw/100 %
     public string Name = string.Empty;
-    public string Kind = string.Empty;       // class imprints: the effect text around the quoted name ("Twin Striker's … Oath DMG")
+    public string Kind = string.Empty;       // class imprints: the effect wording after the quoted name ("Oath DMG"; Lua M.names)
     public string NameLower = string.Empty;
     public string RangeText = string.Empty;
     public ImprintStep[] Steps = Array.Empty<ImprintStep>();   // ascending by entry id (= ascending value)

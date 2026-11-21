@@ -35,7 +35,7 @@ namespace Stellar.AutoManifest;
 // ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
 public sealed partial class Plugin
 {
-    private const int LuaScriptVersion = 4;
+    private const int LuaScriptVersion = 5;
 
     private const string LuaScript = @"pcall(function()
 local M = {}
@@ -207,13 +207,20 @@ function M.rows()
 end
 -- Class (buff) imprints: GetReforgeEntryAttrName returns '' (validated in game 2026-11-21); the only localized text is
 -- GetReforgeEntryAttrDesc(<row ID>), e.g. <style=ItemQuality_2><color=#ffe2af>[Class]</color>Twin Striker's
--- ""Lucky Strike"" Oath DMG <style=""accent-gn"">+0.65%</style>.</style>  →  name 'Lucky Strike', kind
--- 'Twin Striker's … Oath DMG'. Quotes: "" “ ” 「 」 『 』 as byte escapes (no encoding round trip).
+-- ""Lucky Strike"" Oath DMG <style=""accent-gn"">+0.65%</style>.</style>  →  name 'Lucky Strike', kind 'Oath DMG'.
+-- Quotes: "" “ ” 「 」 『 』 as byte escapes (no encoding round trip).
+-- kind = the text AFTER the quoted name, cut at its first sentence end (EN table AttrDescription: 182 class rows are
+-- '<Class>'s ""<skill>"" <effect> <value>.' — only the 10 shared 'Lucky Strike' rows carry the class possessive — plus
+-- a few with a trailing note: '. (Excludes ""Instant Edge Combo"")', '.Upon entering combat…', '; Crit DMG is…').
+-- Word order differs per language, so when nothing follows the name, the text BEFORE it is used minus the imprint's
+-- own class name (ProfessionSystemTableMgr by row.Profession) and the possessive glued to it ('s / の / 의).
 local QUOTES = { { '""', '""' }, { '\226\128\156', '\226\128\157' }, { '\227\128\140', '\227\128\141' },
   { '\227\128\142', '\227\128\143' } }
+-- Sentence ends: '.' not followed by a digit (a decimal stays), '。', ';', '；'.
+local CLAUSE_END = { '%.%D', '%.$', '\227\128\130', ';', '\239\188\155' }
 local function trim(t)
   t = string.gsub(t, '%s+', ' ')
-  t = string.gsub(t, '^%s+', '')
+  t = string.gsub(t, '^[%s,:;]+', '')
   local prev
   repeat
     prev = t
@@ -222,15 +229,39 @@ local function trim(t)
   until t == prev
   return t
 end
-local function shortName(desc)
+local function firstClause(t)
+  local cut = #t + 1
+  for _, p in ipairs(CLAUSE_END) do
+    local i = string.find(t, p)
+    if i and i < cut then cut = i end
+  end
+  return string.sub(t, 1, cut - 1)
+end
+local function dropClass(t, cls)
+  if cls == '' then return t end
+  local i, j = string.find(t, cls, 1, true)
+  if not i then return t end
+  return string.sub(t, 1, i - 1) .. string.gsub(string.sub(t, j + 1), '^%S*', '', 1)
+end
+local function shortName(desc, cls)
   local s = string.gsub(desc, '<color=[^>]*>.-</color>', '', 1)
   s = string.gsub(s, '<style=""accent%-gn"">.-</style>', '')
   s = string.gsub(s, '<[^>]*>', '')
   for _, q in ipairs(QUOTES) do
     local a, b, inner = string.find(s, q[1] .. '(.-)' .. q[2])
-    if a then return trim(inner), trim(string.sub(s, 1, a - 1) .. ' \226\128\166 ' .. string.sub(s, b + 1)) end
+    if a then
+      local kind = trim(firstClause(string.sub(s, b + 1)))
+      if kind == '' then kind = trim(dropClass(string.sub(s, 1, a - 1), cls)) end
+      return trim(inner), kind
+    end
   end
   return trim(s), ''
+end
+local function profName(id)
+  if not id or id == 0 then return '' end
+  local ok, r = pcall(function() return tbl('ProfessionSystemTableMgr').GetRow(id, true) end)
+  if ok and r and r.Name then return tostring(r.Name) end
+  return ''
 end
 function M.names(spec)
   local vm = entryVm()
@@ -248,7 +279,7 @@ function M.names(spec)
           if ok and n then name = tostring(n) end
           if name == '' then
             local okd, d = pcall(vm.GetReforgeEntryAttrDesc, tonumber(id))
-            if okd and d then name, kind = shortName(tostring(d)) end
+            if okd and d then name, kind = shortName(tostring(d), profName(row.Profession)) end
           end
         end
         local ok, t = pcall(vm.GetReforgeEntryAttrValueText, row)
@@ -284,6 +315,6 @@ function M.prof(id)
   rawset(_G, '__stam_prof', n)
 end
 rawset(_G, '__stam', M)
-rawset(_G, '__stam_v', 4)   -- = LuaScriptVersion: bump both together
+rawset(_G, '__stam_v', 5)   -- = LuaScriptVersion: bump both together
 end)";
 }

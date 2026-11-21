@@ -6,7 +6,7 @@ namespace Stellar.AutoManifest;
 
 /// <summary>
 /// The picker's imprint list (a <see cref="VirtualListElement"/> over the filtered imprints: 26 px tiles + 2 px gap =
-/// 28 pitch, 4 rows visible) and its MINIMUM VALUE step chips (one per rollable step, coloured by quality, the selected
+/// 28 pitch, 6 rows visible) and its MINIMUM VALUE step chips (one per rollable step, coloured by quality, the selected
 /// one ringed in the accent). The list row reads "Name · category" with the category muted (rich-text colour span,
 /// rebuilt per slot only when the imprint, the language or the muted colour changes) and the full range right-aligned.
 /// </summary>
@@ -15,11 +15,11 @@ public sealed partial class Plugin
     private const int   PickerPool     = 9;
     private const float PickerTileH    = 26f;
     private const float PickerPitch    = 28f;
-    // 4 rows (was 6): the reachability odds panel (spec ⑥) took the two rows' height, so the picker barely grows.
-    private const float PickerListH    = 4 * PickerPitch - 2f;   // 110
+    // 6 rows again (spec ⑧): cut to 4 when the odds panel (spec ⑥) arrived, restored once the user allowed more height.
+    private const float PickerListH    = 6 * PickerPitch - 2f;   // 166
     private const float PickerRangeW   = 120f;
     private const int   MaxStepChips   = 11;
-    private const float StepChipW      = 43f;                    // 11 × 43 + 10 × 2 = 493
+    private const float StepChipW      = 48f;                    // 11 × 48 + 10 × 2 = 548 (content 556)
 
     private int _pickOffset;
     private readonly bool[] _pickRowHover = new bool[PickerPool];
@@ -61,9 +61,15 @@ public sealed partial class Plugin
         if (ReferenceEquals(imp, _lineImp[slot]) && _lineGen[slot] == _langGen && muted.Equals(_lineMuted[slot]) && _lineText[slot] != null)
             return _lineText[slot];
         _lineImp[slot] = imp; _lineGen[slot] = _langGen; _lineMuted[slot] = muted;
-        // The effect kind: a class imprint's own text around its quoted name, else the category label.
-        var cat = imp.Kind.Length > 0 ? imp.Kind : CategoryNameForLib(imp.AttrLibId);
-        return _lineText[slot] = cat.Length == 0 ? imp.Name : imp.Name + " <color=#" + HexOf(muted) + ">· " + cat + "</color>";
+        return _lineText[slot] = ImprintLine(imp, muted, withCategory: true);
+    }
+
+    // "Name <color=#muted>· kind</color>". kind = a class imprint's effect wording ("Lucky Strike · Oath DMG", parsed
+    // in Lua M.names), else (withCategory) the category label. The picker AND the main-window target rows use it.
+    private string ImprintLine(Imprint imp, ColorRgba muted, bool withCategory)
+    {
+        var cat = imp.Kind.Length > 0 ? imp.Kind : withCategory ? CategoryNameForLib(imp.AttrLibId) : string.Empty;
+        return cat.Length == 0 ? imp.Name : imp.Name + " <color=#" + HexOf(muted) + ">· " + cat + "</color>";
     }
 
     private static string HexOf(ColorRgba c)

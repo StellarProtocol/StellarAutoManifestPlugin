@@ -5,7 +5,7 @@ using Stellar.Abstractions.Services;
 namespace Stellar.AutoManifest;
 
 /// <summary>
-/// The TARGETS list (approved ①): one raised tile per target row in a fixed 5-row viewport that scrolls past 5, with
+/// The TARGETS list (approved ①, spec ⑧): one raised tile per target row in a fixed 7-row viewport that scrolls past 7, with
 /// reserved empty slots below the real rows so the list keeps its height (house rules 14/15). A row is
 ///   [4 px quality bar | imprint name | "v+" pill dropdown | waiting / stored / needs Lv N / locked badge | icon-only ✕]
 /// The quality bar takes the colour of the chosen minimum's quality; the dropdown lists exactly the game's rollable
@@ -15,10 +15,10 @@ namespace Stellar.AutoManifest;
 /// </summary>
 public sealed partial class Plugin
 {
-    private const int   TargetVisibleRows = 5;
+    private const int   TargetVisibleRows = 7;   // spec ⑧ (was 5)
     private const float TargetTileH = 30f;
     private const float TargetGap   = 2f;
-    private const float TargetListH = TargetVisibleRows * (TargetTileH + TargetGap) - TargetGap;   // 158
+    private const float TargetListH = TargetVisibleRows * (TargetTileH + TargetGap) - TargetGap;   // 222
     private const float TargetMinW  = 96f;
     private const float TargetBadgeW = 96f;
     private const float AddTargetW  = 132f;
@@ -48,7 +48,7 @@ public sealed partial class Plugin
         }, Gap: 0.01f),
     });
 
-    // Real rows + empty slots up to the 5-row viewport; 0 while hidden (the Prebuild fill binds nothing).
+    // Real rows + empty slots up to the 7-row viewport; 0 while hidden (the Prebuild fill binds nothing).
     private int TargetSlotCount() => _mainWindow?.IsShown == true ? Math.Min(MaxTargets, Math.Max(TargetVisibleRows, _targets.Count)) : 0;
 
     private HudElement[] BuildTargetPool()
@@ -76,7 +76,23 @@ public sealed partial class Plugin
     private Imprint? ImprintAt(int i)
         => TargetAt(i) is { } t && _catalog != null && _catalog.ByGroup.TryGetValue(t.Group, out var imp) ? imp : null;
 
-    private string TargetName(int i) => ImprintAt(i)?.Name ?? (TargetAt(i) is { } t ? "#" + t.Group : string.Empty);
+    // "Lucky Strike · Oath DMG" for a class imprint (same wording as the picker row), the bare name otherwise. Cached per
+    // slot; rebuilt only when that slot's name / kind strings or the muted colour change (names re-arrive on a language
+    // switch as new strings, so reference checks cover it).
+    private readonly string?[] _tlName = new string?[MaxTargets], _tlKind = new string?[MaxTargets];
+    private readonly ColorRgba[] _tlMuted = new ColorRgba[MaxTargets];
+    private readonly string[] _tlText = new string[MaxTargets];
+
+    private string TargetName(int i)
+    {
+        if (ImprintAt(i) is not { } imp) return TargetAt(i) is { } t ? "#" + t.Group : string.Empty;
+        if (imp.Kind.Length == 0) return imp.Name;
+        var muted = MutedColor();
+        if (ReferenceEquals(imp.Name, _tlName[i]) && ReferenceEquals(imp.Kind, _tlKind[i]) && muted.Equals(_tlMuted[i]) && _tlText[i] != null)
+            return _tlText[i];
+        _tlName[i] = imp.Name; _tlKind[i] = imp.Kind; _tlMuted[i] = muted;
+        return _tlText[i] = ImprintLine(imp, muted, withCategory: false);
+    }
 
     private int TargetMin(int i) => TargetAt(i)?.MinStep ?? 0;
 

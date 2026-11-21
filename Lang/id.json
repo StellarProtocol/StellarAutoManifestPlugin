@@ -22,7 +22,7 @@
   "am.run.pull10": "10 tarikan",
   "am.run.blessing": "Pakai Berkah ({0} · punya {1})",
   "am.run.keepBetter": "Simpan hasil lebih baik",
-  "am.run.keepBetterHint": "juga simpan nilai lebih tinggi · pakai 1 slot kantong",
+  "am.run.keepBetterHint": "target tersimpan juga ambil nilai lebih tinggi (masing-masing +1 slot)",
   "am.run.spend": "Pakai paling banyak (Remnant)",
   "am.run.keepFree": "Sisakan slot kantong kosong",
   "am.materials.caption": "Bahan",

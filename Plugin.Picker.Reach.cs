@@ -32,7 +32,7 @@ public sealed partial class Plugin
     private bool PickHintShown() => _levels != null && _st.Valid && StepAt(_pickStep) is { } s && !RollNow(s.Quality);
 
     private HudElement BuildPickHintOrLegend() => FixedLine(PickHintLineH, new ConditionalElement(PickHintShown,
-        // Wraps (no NoWrap / Width): the full sentence is ~100 characters, two lines at 12 px in the 496 px picker.
+        // Wraps (no NoWrap / Width): the full sentence is ~100 characters, two lines at 12 px in the 556 px picker.
         new TextElement(PickHintText, Color: () => _pickHintInk.Get(CautionColor(), WindowBg(), PillMinContrast), FontSize: 12)
             { RichEmoji = true },
         BuildLegend()));

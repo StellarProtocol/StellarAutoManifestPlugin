@@ -17,14 +17,14 @@ namespace Stellar.AutoManifest;
 ///   roll at the current Matrix level, the amber reachability hint in the same slot (spec ⑥)
 ///   odds panel "QUALITY CHANCE PER ROW · Lv 2 · Blessing on" (spec ⑥, Plugin.Picker.Reach.cs)
 ///   Primary "Add “Name v+”" + Neutral Cancel
-/// Widened to 520 (house rule 18) so the 11 value chips fit one line at a readable size. Rows / chips:
+/// Widened to 520 (house rule 18) so the 11 value chips fit one line at a readable size, then +60 to 580 (spec ⑧). Rows / chips:
 /// <c>Plugin.Picker.Rows.cs</c>. The filtered list is rebuilt on a category / search / class / catalogue change only.
 /// </summary>
 public sealed partial class Plugin
 {
-    private const float PickerWidth   = 520f;   // content = 496
+    private const float PickerWidth   = 580f;   // content = 556
     private const float PickerContentW = PickerWidth - 24f;
-    private const float CategoryChipW = 79f;    // 6 × 79 + 5 × 4 = 494
+    private const float CategoryChipW = 89f;    // 6 × 89 + 5 × 4 = 554
     private const float CancelPillW   = 96f;
 
     private int _pickCategory;                    // index into CategoryLibIds (0 = Class)

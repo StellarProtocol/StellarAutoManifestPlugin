@@ -22,7 +22,7 @@
   "am.run.pull10": "10-pull",
   "am.run.blessing": "Use Blessing ({0} · {1} owned)",
   "am.run.keepBetter": "Keep better rolls",
-  "am.run.keepBetterHint": "also stores a higher roll · uses a pocket slot",
+  "am.run.keepBetterHint": "a stored target also takes a higher value (one more pocket slot each)",
   "am.run.spend": "Spend at most (Remnants)",
   "am.run.keepFree": "Keep pocket slots free",
   "am.materials.caption": "Materials",

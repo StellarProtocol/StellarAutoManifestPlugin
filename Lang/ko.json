@@ -22,7 +22,7 @@
   "am.run.pull10": "10연",
   "am.run.blessing": "축복 사용 ({0} · 보유 {1})",
   "am.run.keepBetter": "더 좋은 결과도 보관",
-  "am.run.keepBetterHint": "더 높은 값도 보관 · 보관함 1칸 사용",
+  "am.run.keepBetterHint": "보관된 목표도 더 높은 값을 가져갑니다 (각각 보관함 1칸 추가)",
   "am.run.spend": "최대 사용량 (잔재)",
   "am.run.keepFree": "보관함 빈칸 남기기",
   "am.materials.caption": "재료",
