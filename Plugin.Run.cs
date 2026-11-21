@@ -76,14 +76,20 @@ public sealed partial class Plugin
         });
     }
 
-    // "Spends up to 1,200 Lightchase Factor Remnant and 100 Dawn Prism. …" — the Prism part only with Blessing usable:
-    // at most one Prism per pull, and at most limit / cost pulls at the current level (the cost only rises with level).
+    // "Spends up to 240 Lightchase Factor Remnant and 20 Dawn Prism. …" — counted in WHOLE batches of the chosen pull
+    // size, like the run (Cycle stops before a batch that would pass the limit): batches = limit / (cost × size), e.g.
+    // 300 / (12 × 10) = 2 → 240 Remnants, 20 Prism (one per pull). "Up to": the cost per pull can rise if the level
+    // goes up mid-run, which only lowers these. The Prism part only when Blessing is on and usable.
     private string ConfirmBody()
     {
-        int pulls = _st.CostPerPull > 0 ? SpendLimit / _st.CostPerPull : 0;
+        int size = PullTimes;
+        int batchCost = _st.CostPerPull * size;
+        int batches = batchCost > 0 ? SpendLimit / batchCost : 0;
+        long remnants = (long)batches * batchCost;
+        long prisms = (long)batches * size;
         return _useBlessing && _st.BlessAllowed
-            ? _loc.TFormat(KeyConfirmBless, N0(SpendLimit), RemnantName(), N0(pulls), PrismName())
-            : _loc.TFormat(KeyConfirmBody, N0(SpendLimit), RemnantName());
+            ? _loc.TFormat(KeyConfirmBless, N0(remnants), RemnantName(), N0(prisms), PrismName())
+            : _loc.TFormat(KeyConfirmBody, N0(remnants), RemnantName());
     }
 
     private void BeginRun()
