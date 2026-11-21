@@ -9,7 +9,8 @@ namespace Stellar.AutoManifest;
 /// reserved empty slots below the real rows so the list keeps its height (house rules 14/15). A row is
 ///   [4 px quality bar | imprint name | "v+" pill dropdown | waiting / stored / needs Lv N / locked badge | icon-only ✕]
 /// The quality bar takes the colour of the chosen minimum's quality; the dropdown lists exactly the game's rollable
-/// steps; ✕ removes at once. Rows are built ONCE into a fixed pool (<see cref="MaxTargets"/>) and read live.
+/// steps; ✕ removes at once. Rows are built ONCE into a fixed pool (<see cref="MaxTargets"/>) and read live. Under the
+/// list: "+ Add target" (left) and "Pocket N/M" (right, spec ⑨ — opens the pocket window, Plugin.Pocket.cs).
 /// <para>⚠️ Toolkit-forced size: the approved row is a 26 px tile, but the framework's Pill dropdown trigger is a fixed
 /// 28 px, so the tile is 30 px (1 px above / below the trigger) and the pitch 32.</para>
 /// </summary>
@@ -22,6 +23,7 @@ public sealed partial class Plugin
     private const float TargetMinW  = 96f;
     private const float TargetBadgeW = 96f;
     private const float AddTargetW  = 132f;
+    private const float PocketPillW = 132f;
     private const float QualityBarW = 4f;
 
     private static readonly string[] NoOptions = { "—" };
@@ -40,13 +42,28 @@ public sealed partial class Plugin
     {
         new ScrollElement(new ListElement(TargetSlotCount, BuildTargetPool(), Columns: 1) { Gap = TargetGap },
             Height: TargetListH) { FixedHeight = true },
+        // spec ⑨: "Pocket N/M" right-aligned on the same row; opens the pocket window (viewable during a run too — only its
+        // ✕ lock then).
         new RowElement(new HudElement[]
         {
             PillButton(() => _loc.T(KeyAddTarget), PillKind.Neutral, OpenPicker, AddTargetW, PanelColor,
                 () => !Running && _catalogReady && _targets.Count < MaxTargets),
             new SpacerElement(0f),
+            PillButton(PocketPillLabel, PillKind.Neutral, OpenPocket, PocketPillW, PanelColor, CanOpenPocket),
         }, Gap: 0.01f),
     });
+
+    // "Pocket 3/5" — rebuilt only when the count, the limit or the language moves.
+    private int _pocketPillN = -1, _pocketPillM = -1, _pocketPillGen = -1;
+    private string _pocketPill = string.Empty;
+
+    private string PocketPillLabel()
+    {
+        int n = _st.Valid ? _st.Stored : -1, m = _st.Valid ? _st.StoreLimit : -1;
+        if (n == _pocketPillN && m == _pocketPillM && _langGen == _pocketPillGen && _pocketPill.Length > 0) return _pocketPill;
+        _pocketPillN = n; _pocketPillM = m; _pocketPillGen = _langGen;
+        return _pocketPill = n < 0 ? _loc.TFormat(KeyPocketPill, "—", "—") : _loc.TFormat(KeyPocketPill, n, m);
+    }
 
     // Real rows + empty slots up to the 7-row viewport; 0 while hidden (the Prebuild fill binds nothing).
     private int TargetSlotCount() => _mainWindow?.IsShown == true ? Math.Min(MaxTargets, Math.Max(TargetVisibleRows, _targets.Count)) : 0;

@@ -100,6 +100,22 @@ public sealed partial class Plugin
     private const string KeyConfirmBetter    = "am.confirm.keepBetter";
     private const string KeyEndBetterOne     = "am.end.betterOne";
     private const string KeyEndBetterMany    = "am.end.betterMany";
+    // Pocket window + discard (spec ⑨, Plugin.Pocket*.cs)
+    private const string KeyClose              = "am.ui.close";
+    private const string KeyPocketPill         = "am.targets.pocket";
+    private const string KeyPocketCaption      = "am.pocket.caption";
+    private const string KeyPocketPanel        = "am.pocket.panel";
+    private const string KeyPocketHint         = "am.pocket.hint";
+    private const string KeyPocketHintRunning  = "am.pocket.hintRunning";
+    private const string KeyPocketFree         = "am.pocket.freeSlot";
+    private const string KeyPocketTarget       = "am.pocket.target";
+    private const string KeyPocketUnlockOne    = "am.pocket.unlockOne";
+    private const string KeyPocketUnlockMany   = "am.pocket.unlockMany";
+    private const string KeyDiscardTitle       = "am.pocket.discardTitle";
+    private const string KeyDiscardBody        = "am.pocket.discardBody";
+    private const string KeyDiscardWaiting     = "am.pocket.discardWaiting";
+    private const string KeyDiscardNext        = "am.pocket.discardNext";
+    private const string KeyDiscard            = "am.pocket.discard";
 
     // Category chips, in picker order; the game's own Lang('SeasonTalentAttrLibName_<id>') wins when it exists.
     private static readonly int[] CategoryLibIds = { 1001, 101, 102, 103, 104, 105 };
@@ -127,6 +143,7 @@ public sealed partial class Plugin
         _langGen++;
         _mainWindow?.MarkDirty();
         _pickerWindow?.MarkDirty();
+        _pocketWindow?.MarkDirty();
     }
 
     // A string composed from catalog text, rebuilt only when _langGen moves (or Invalidate is called).

@@ -21,6 +21,8 @@ namespace Stellar.AutoManifest;
 //   roll           GetVM('season_talent_entry').AsyncSeasonTalentReforge(blessRows, times, token) (entry_vm.lua:246-260);
 //                  blessRows = { SeasonTalentReforgeItemTableMgr.GetRow(1220411) } (refine_sub_view.lua:589-599, 693)
 //   store          …AcyncStoreSeasonTalentReforgeEntry(pull0, row0, token) — "Acync" typo is real (entry_vm.lua:186)
+//   discard        …AsyncRemoveStoredSeasonTalentReforgeEntry(uuid, token) (entry_vm.lua:200; request {storedEntryUid})
+//                  = the pocket screen's own btn_discard path (season_talent_refine_storage_left_sub_view.lua:313-327)
 //   pocket / char  sd.storeEntries = map of {uuid, entryId} (zcontainer/season_talent_stored_entry.lua: uuid field 1,
 //                  entryId field 2); the store reply is `ret` only (world_proxy.lua:13897-13944 returns pbRet.ret), so
 //                  the new entry's uuid comes from diffing the pocket around a store; CharSerialize.charId
@@ -35,7 +37,7 @@ namespace Stellar.AutoManifest;
 // ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
 public sealed partial class Plugin
 {
-    private const int LuaScriptVersion = 5;
+    private const int LuaScriptVersion = 6;
 
     private const string LuaScript = @"pcall(function()
 local M = {}
@@ -188,6 +190,11 @@ end
 function M.store(p, r)
   run(function(tok) return entryVm().AcyncStoreSeasonTalentReforgeEntry(p, r, tok) end)
 end
+-- Pocket discard (the pocket window's ✕, only after its confirm): u = storeEntries[*].uuid, the same field the game's
+-- storage view keeps as selectedEntryUuid_. The VM shows the game's own result tip.
+function M.discard(u)
+  run(function(tok) return entryVm().AsyncRemoveStoredSeasonTalentReforgeEntry(u, tok) end)
+end
 function M.rows()
   local out = {}
   for _, row in pairs(tbl('SeasonTalentFactorAttrLibTableMgr').GetDatas()) do
@@ -315,6 +322,6 @@ function M.prof(id)
   rawset(_G, '__stam_prof', n)
 end
 rawset(_G, '__stam', M)
-rawset(_G, '__stam_v', 5)   -- = LuaScriptVersion: bump both together
+rawset(_G, '__stam_v', 6)   -- = LuaScriptVersion: bump both together
 end)";
 }

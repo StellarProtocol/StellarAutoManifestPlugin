@@ -29,6 +29,8 @@ public sealed partial class Plugin : IStellarPlugin
     private readonly IWindowControl _mainWindow;
     private readonly IWindowControl _pickerWindow;
     private readonly WindowCenterer _pickerCenterer;
+    private readonly IWindowControl _pocketWindow;
+    private readonly WindowCenterer _pocketCenterer;
     private readonly IHotkeyAction _toggle;
     private readonly IDisposable _launcherEntry;
 
@@ -43,8 +45,10 @@ public sealed partial class Plugin : IStellarPlugin
         LoadConfig();
 
         _pickerWindow = RegisterPicker();
+        _pocketWindow = RegisterPocket();
         _mainWindow = RegisterMain();
         _pickerCenterer = new WindowCenterer(_services.Framework, _pickerWindow, WindowCenterer.CentreOf(_mainWindow));
+        _pocketCenterer = new WindowCenterer(_services.Framework, _pocketWindow, WindowCenterer.CentreOf(_mainWindow));
 
         // Same discoverability as Loadout Switcher: a toggle hotkey WITHOUT a default binding + a launcher tile.
         _toggle = _services.Hotkeys.DeclareAction(
@@ -70,9 +74,11 @@ public sealed partial class Plugin : IStellarPlugin
         _services.ClientState.Logout -= OnLogout;
         _loc.LanguageChanged -= OnLanguageChanged;
         _pickerCenterer.Stop();
+        _pocketCenterer.Stop();
         try { _launcherEntry.Dispose(); } catch { /* disposal must not throw */ }
         try { _toggle.Dispose(); } catch { /* disposal must not throw */ }
         try { _pickerWindow.Remove(); } catch { /* disposal must not throw */ }
+        try { _pocketWindow.Remove(); } catch { /* disposal must not throw */ }
         try { _mainWindow.Remove(); } catch { /* disposal must not throw */ }
     }
 
@@ -83,7 +89,8 @@ public sealed partial class Plugin : IStellarPlugin
         _nextTickAt = now + TickS;
 
         if (Running) { RunTick(now); return; }
-        if (!_mainWindow.IsShown && !_pickerWindow.IsShown) return;   // nothing to show → no game reads
+        if (_discardBusy) DiscardTick(now);   // a pocket discard's reply is awaited even with every window closed
+        if (!_mainWindow.IsShown && !_pickerWindow.IsShown && !_pocketWindow.IsShown) return;   // nothing to show → no game reads
         if (!InWorld()) return;
         if (!_catalogReady) CatalogLoadTick();
         if (now - _stateReadAt >= IdleRefreshS) RefreshIdleState(now);
@@ -102,6 +109,7 @@ public sealed partial class Plugin : IStellarPlugin
     {
         ValidateMarks();   // stored marks vs the current pocket (Plugin.StoredMarks.cs) — they feed the reach counts
         UpdateReach();
+        RefreshPocketView();   // the pocket window's sorted rows, rebuilt only when the pocket / marks moved (Plugin.Pocket.Rows.cs)
         if (!_st.Valid || _st.Profession == _profId) return;
         RefreshProfessionName(_st.Profession);
         RefilterPicker();
@@ -118,12 +126,13 @@ public sealed partial class Plugin : IStellarPlugin
         _mainWindow.SetVisiblePersist(true);
     }
 
-    // Closing the window stops the run (after the request in flight) and drops the picker + an open confirm.
+    // Closing the window stops the run (after the request in flight) and drops the picker, the pocket + an open confirm.
     private void CloseMain()
     {
         if (Running) OnStopClicked();
         _confirm.Cancel();
         ClosePicker();
+        ClosePocket();
         if (_mainWindow.IsShown) _mainWindow.SetVisiblePersist(false);
     }
 
@@ -135,6 +144,7 @@ public sealed partial class Plugin : IStellarPlugin
         End(EndReason.LeftWorld);
         _confirm.Cancel();
         ClosePicker();
+        ClosePocket();
         if (_mainWindow.IsShown) _mainWindow.SetVisible(false);
         _profId = -1;
         SuspendMarks();   // the next login may be another character: re-check every mark against its pocket

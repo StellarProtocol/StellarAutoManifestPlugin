@@ -55,7 +55,9 @@ public sealed partial class Plugin
     // Startable with at least one WAITING target the live table knows (a "stored" row stays stored across runs and restarts
     // while the pocket still holds its imprint — Plugin.StoredMarks.cs),
     // and not when NONE of them can roll at the current level (spec ⑥ — the footer then says why, Plugin.Reach.cs).
-    private bool CanStart() => !Running && _catalogReady && _st.Valid && InWorld() && WaitingCount() > 0 && !ReachBlocksStart();
+    // Not while a pocket discard is in flight either: it parks its reply in the same __stam_ret the run polls.
+    private bool CanStart() => !Running && !_discardBusy && _catalogReady && _st.Valid && InWorld() && WaitingCount() > 0
+                               && !ReachBlocksStart();
 
     private int KnownTargetCount()
     {

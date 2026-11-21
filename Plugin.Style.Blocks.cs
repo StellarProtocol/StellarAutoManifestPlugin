@@ -205,17 +205,20 @@ public sealed partial class Plugin
 
     // ── icon-only ✕ ───────────────────────────────────────────────────────────────────────────────────────────────
     // A round 24 px icon button: a muted PLAIN "✕" at rest (a bold ✕ can draw blank — KB §6). `danger` = the house
-    // "Remove hover" (soft red wash + red glyph); otherwise a soft text wash (close). `enabled` false = no hover, no click.
+    // "Remove hover" (soft red wash + red glyph); otherwise a soft text wash (close). `enabled` false = no hover, no click;
+    // `dimDisabled` also draws it recessed then (sunken circle + faint glyph — the pocket ✕ during a run, spec ⑨).
     private static readonly ColorRgba RemoveGlyph = new(1f, 0x8a / 255f, 0x8b / 255f);   // #ff8a8b
 
     private HudElement CrossButton(Func<bool> hover, Action<bool> setHover, Action onClick, Func<ColorRgba> surface,
-        bool danger, Func<bool>? enabled = null)
+        bool danger, Func<bool>? enabled = null, bool dimDisabled = false)
     {
         var glyph = new ContrastCache();
+        var dim = new DisabledLabelCache();
         bool En() => enabled == null || enabled();
         bool Hot() => hover() && En();
         ColorRgba HotFill() => danger ? Over(DangerColor() with { A = 0.22f }, surface()) : Over(TextColor() with { A = HoverMix }, surface());
-        ColorRgba Ink() => !Hot() ? MutedColor() : danger ? glyph.Get(RemoveGlyph, HotFill(), SolidMinContrast) : TextColor();
+        ColorRgba Ink() => dimDisabled && !En() ? DisabledLabel(surface(), dim)
+                         : !Hot() ? MutedColor() : danger ? glyph.Get(RemoveGlyph, HotFill(), SolidMinContrast) : TextColor();
         return new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
             {
                 new SpacerElement(0f, ChipHeight),
@@ -224,7 +227,8 @@ public sealed partial class Plugin
             OnClick: () => { if (En()) onClick(); })
             { Bare = true, OnHover = setHover })
         {
-            FillColorFn = () => Hot() ? Fade(HotFill()) : Transparent,
+            // dimDisabled + disabled = RECESSED (house rule 22): the sunken circle, drawn translucent like the pills'.
+            FillColorFn = () => dimDisabled && !En() ? DisabledShade : Hot() ? Fade(HotFill()) : Transparent,
             CornerRadius = RoundRadius(ChipHeight), PaddingX = 0f, PaddingY = 0f, MaxWidth = ChipHeight,
         };
     }

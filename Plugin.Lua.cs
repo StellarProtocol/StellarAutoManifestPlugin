@@ -83,6 +83,16 @@ public sealed partial class Plugin
         return true;
     }
 
+    // Pocket discard (Plugin.Pocket.cs). Shares __stam_ret with roll / store, so it is only ever started with no run going
+    // (and a run can't start while it is in flight — CanStart).
+    private bool StartDiscard(int uuid)
+    {
+        if (!EnsureLua()) return false;
+        _services.Lua.DoString("pcall(function() rawset(_G,'__stam_ret',nil) rawget(_G,'__stam').discard("
+                               + uuid.ToString(CultureInfo.InvariantCulture) + ") end)");
+        return true;
+    }
+
     private bool TryTakeRet(out int ret)
     {
         ret = 0;
