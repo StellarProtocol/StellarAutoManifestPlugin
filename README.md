@@ -17,12 +17,16 @@ no default key).
   - **Pull size**: 1 pull or 10-pull.
   - **Use Blessing**: adds a Dawn Prism to each pull (better quality odds, and the pull gives Matrix EXP). The plugin
     uses it only when the game itself allows Blessing at your level.
+  - **Keep better rolls** (default Off): a target that is already stored also takes a higher value of the same imprint
+    when one rolls during the run. Each better roll uses one more pocket slot, and the old copy stays in your pocket.
+    Waiting targets always come first: a better roll is only stored while a free slot is still left for every waiting
+    target, otherwise the footer says it was skipped. The run still stops once every target has a store.
   - **Spend at most (Remnants)**: the most Lightchase Factor Remnant one run may use.
   - **Keep pocket slots free**: leaves that many pocket slots empty for you.
 - **Start** shows a confirm card first: the most Remnants (and Dawn Prisms) the run can spend, and a reminder that your
   last pull's unstored results get cleared by the next pull.
 - While it runs, the footer shows each pull and each store, and the target rows turn to **stored 2.72%** as they are
-  filled.
+  filled. A better roll shows as, for example, "Pull 41: better Great Crimson Lotus 4.48% (was 2.72%)".
 
 ## When it stops
 
@@ -61,7 +65,11 @@ remembers which pocket entry it stored for that row and checks your pocket each 
   shows **stored** again.
 - Changing a row's minimum value, or removing the row, clears its mark.
 
-A stored row is skipped by the next run. Start needs at least one waiting target.
+- With **Keep better rolls**, a row can have several copies in your pocket. It shows the best one that is still
+  there; remove that one and it shows the next best, and only when none are left does it go back to **waiting**.
+
+A stored row is not looked for again by the next run, except for better rolls when **Keep better rolls** is on. Start
+needs at least one waiting target.
 
 ## What it never does
 

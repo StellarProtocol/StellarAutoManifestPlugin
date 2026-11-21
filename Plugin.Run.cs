@@ -41,6 +41,8 @@ public sealed partial class Plugin
     private bool _stopRequested;
     private float _phaseAt, _nextRollAt, _lastReplyAt;
     private int _runPulls, _rollTimes, _rollCost, _storedBefore;
+    private int _runBetter;      // "Keep better rolls" stores this run (spec ⑦)
+    private int _planWasEntry;   // upgrade plan: the entryId of the best copy it beats (footer "was 2.72%")
     private long _runSpent;
     private bool _rollBless;
     private string _sigBefore = string.Empty;
@@ -91,19 +93,21 @@ public sealed partial class Plugin
         int batches = batchCost > 0 ? SpendLimit / batchCost : 0;
         long remnants = (long)batches * batchCost;
         long prisms = (long)batches * size;
-        return _useBlessing && _st.BlessAllowed
+        var body = _useBlessing && _st.BlessAllowed
             ? _loc.TFormat(KeyConfirmBless, N0(remnants), RemnantName(), N0(prisms), PrismName())
             : _loc.TFormat(KeyConfirmBody, N0(remnants), RemnantName());
+        // spec ⑦: a muted second line, only when "Keep better rolls" is on (the card's Message is the muted text).
+        return _keepBetter ? body + "\n" + _loc.T(KeyConfirmBetter) : body;
     }
 
     private void BeginRun()
     {
         if (!CanStart()) return;
-        _runPulls = 0; _runSpent = 0; _stopRequested = false;
+        _runPulls = 0; _runSpent = 0; _runBetter = 0; _stopRequested = false;
         _lastReplyAt = float.NegativeInfinity;
         _endReason = EndReason.None;
         SetFooter(FooterEvent.Starting);
-        _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} blessing={_useBlessing}"
+        _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} keepBetter={_keepBetter} blessing={_useBlessing}"
                            + $"(allowed={_st.BlessAllowed}) spendLimit={SpendLimit} keepFree={KeepFree} level={_st.Level} "
                            + $"pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms} exp={_st.Exp} "
                            + $"rollNow={_rollNowTargets} notYet={_unreachTargets} reachable={_reachableTargets}");
@@ -210,21 +214,35 @@ public sealed partial class Plugin
         if (_stopRequested) { End(EndReason.UserStop); return; }
         _st = ReadState();
         RefreshMaterialsFromState();
-        var plan = _catalog == null ? null : Matcher.FirstPlan(_catalog, _targets, _res, _st.RowUnlocked);
-        if (plan is not { } p)
+        // Waiting rows are always planned first; an upgrade ("Keep better rolls", spec ⑦) comes back only when no waiting
+        // row has a match in these results.
+        var plan = _catalog == null ? null : Matcher.FirstPlan(_catalog, _targets, _res, _st.RowUnlocked, _keepBetter);
+        int waiting = WaitingCount();
+        // Every row stored → Done, even with upgrades left in these results: no pulling or storing just for upgrades.
+        if (plan is not { } p || (p.Upgrade && waiting == 0))
         {
-            if (WaitingCount() == 0) { End(EndReason.AllStored); return; }
+            if (waiting == 0) { End(EndReason.AllStored); return; }
             _nextRollAt = _lastReplyAt + RollGapS;
             Enter(RunPhase.Cooldown);
             return;
         }
         if (_st.Stored >= _st.StoreLimit - KeepFree) { End(EndReason.PocketFull); return; }   // re-checked before EACH store
+        if (p.Upgrade && !UpgradeFits(p, waiting))
+        {
+            _nextRollAt = _lastReplyAt + RollGapS;   // the rest of these results only holds upgrades: roll again
+            Enter(RunPhase.Cooldown);
+            return;
+        }
         _plan = p;
+        _planWasEntry = p.Upgrade ? _targets[p.TargetIndex].Best?.Entry ?? 0 : 0;
         _sigBefore = _res.Signature;
         _storedBefore = _st.Stored;
         _storeBefore = _st;   // its pocket = the "before" side of the uuid diff (Plugin.StoredMarks.cs)
         _services.Log.Info($"[AutoManifest] store → pull={p.Pull + 1} row={p.Row + 1} (idx {p.Pull},{p.Row}) entry={p.EntryId} "
-                           + $"{EntryText(p.EntryId)} for target #{p.TargetIndex + 1} pocket={_st.Stored}/{_st.StoreLimit}");
+                           + $"{EntryText(p.EntryId)} for target #{p.TargetIndex + 1} pocket={_st.Stored}/{_st.StoreLimit}"
+                           + (p.Upgrade ? $" · better roll (was entry={_planWasEntry} {EntryText(_planWasEntry)} "
+                                          + $"uuid={_targets[p.TargetIndex].Best?.Uuid ?? 0}, copies={_targets[p.TargetIndex].Copies.Count})"
+                                        : string.Empty));
         if (!StartStore(p.Pull, p.Row)) { End(EndReason.LeftWorld); return; }
         Enter(RunPhase.Storing);
     }
@@ -241,6 +259,7 @@ public sealed partial class Plugin
         if (ret == StorageFullCode) { End(EndReason.PocketFull); return; }
         if (ret != 0) { End(EndReason.StoreRefused); return; }
         MarkStored(_plan.TargetIndex, _plan.EntryId, _storeBefore);
+        if (_plan.Upgrade) _runBetter++;
         Enter(RunPhase.AwaitStore);
         AwaitStoreSync(now);
     }
@@ -262,7 +281,8 @@ public sealed partial class Plugin
         }
         _st = st;
         RefreshMaterialsFromState();
-        SetFooter(FooterEvent.Stored, _plan.EntryId);
+        if (_plan.Upgrade) SetFooter(FooterEvent.Better, _plan.EntryId, _planWasEntry);
+        else SetFooter(FooterEvent.Stored, _plan.EntryId);
         _services.Log.Info($"[AutoManifest] stored entry={_plan.EntryId}: pocket {_storedBefore} → {st.Stored}/{st.StoreLimit} "
                            + $"(results sig changed={_res.Signature != _sigBefore}); results now: {DescribeResults(_res)}");
         Enter(RunPhase.Matching);
@@ -271,7 +291,7 @@ public sealed partial class Plugin
 
     // ── end ───────────────────────────────────────────────────────────────────────────────────────────────────────
     private EndReason _endReason;
-    private int _endPulls, _endStored, _endLimit, _endWaiting;
+    private int _endPulls, _endStored, _endLimit, _endWaiting, _endBetter;
     private long _endSpent;
 
     private void End(EndReason reason)
@@ -282,11 +302,36 @@ public sealed partial class Plugin
         _endReason = reason;
         _endPulls = _runPulls; _endSpent = _runSpent;
         _endStored = _st.Stored; _endLimit = _st.StoreLimit; _endWaiting = WaitingCount();
+        _endBetter = _runBetter;
         CaptureEndReach();
         _endComposed.Invalidate();
         _services.Log.Info($"[AutoManifest] run end: {reason} pulls={_runPulls} spent={_runSpent} pocket={_st.Stored}/{_st.StoreLimit} "
-                           + $"waiting={_endWaiting} targets={DescribeTargets()}");
+                           + $"waiting={_endWaiting} better={_runBetter} targets={DescribeTargets()}");
         MarkMain();
+    }
+
+    // ── "Keep better rolls" slot rule (spec ⑦) ────────────────────────────────────────────────────────────────────
+    // An upgrade takes a slot only while one stays free for EVERY waiting row: (limit − pocket − keep-free) > waiting.
+    // Otherwise the amber "skipped … last free slot is kept for <first waiting target>" line, and the run rolls on.
+    private bool UpgradeFits(StorePlan p, int waiting)
+    {
+        int free = _st.StoreLimit - _st.Stored - KeepFree;
+        if (free > waiting) return true;
+        int keptFor = FirstWaitingIndex();
+        var t = _targets[p.TargetIndex];
+        _services.Log.Info($"[AutoManifest] better roll skipped: pull={p.Pull + 1} row={p.Row + 1} entry={p.EntryId} "
+                           + $"{EntryText(p.EntryId)} for target #{p.TargetIndex + 1} (best entry={t.Best?.Entry ?? 0} "
+                           + $"uuid={t.Best?.Uuid ?? 0}) · free={free} (pocket={_st.Stored}/{_st.StoreLimit} keepFree={KeepFree}) "
+                           + $"waiting={waiting} · slot kept for target #{keptFor + 1}");
+        SetFooter(FooterEvent.Skipped, p.EntryId, keptFor >= 0 ? _targets[keptFor].Group : 0);
+        return false;
+    }
+
+    private int FirstWaitingIndex()
+    {
+        for (int i = 0; i < _targets.Count; i++)
+            if (!_targets[i].Stored && _catalog != null && _catalog.ByGroup.ContainsKey(_targets[i].Group)) return i;
+        return -1;
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -311,6 +356,7 @@ public sealed partial class Plugin
         {
             if (sb.Length > 0) sb.Append(", ");
             sb.Append(t.Group).Append(":step").Append(t.MinStep + 1).Append('+').Append(t.Stored ? "(stored " + t.StoredText + ")" : "");
+            if (t.Copies.Count > 1) sb.Append("[").Append(t.Copies.Count).Append(" copies]");
         }
         return sb.Length > 0 ? sb.ToString() : "-";
     }

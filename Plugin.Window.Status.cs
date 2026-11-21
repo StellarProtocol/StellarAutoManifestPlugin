@@ -31,22 +31,26 @@ public sealed partial class Plugin
     }
 
     // ── footer log line (running) / last run (idle, before any run) ───────────────────────────────────────────────
-    private enum FooterEvent : byte { None, Starting, Stopping, Pull, Stored, LevelUp }
+    private enum FooterEvent : byte { None, Starting, Stopping, Pull, Stored, LevelUp, Better, Skipped }
 
     private FooterEvent _fbEvent;
-    private int _fbPull, _fbEntry, _fbStored, _fbLimit, _fbVer, _fbBuiltVer = -1, _fbBuiltGen = -1;
+    private int _fbPull, _fbEntry, _fbExtra, _fbStored, _fbLimit, _fbVer, _fbBuiltVer = -1, _fbBuiltGen = -1;
     private string _fbText = string.Empty;
     private int _fbFrom, _fbTo;
     private string _fbNames = string.Empty;
     private float _fbHoldUntil;
-    private const float LevelUpHoldS = 4f;   // the level-up line outlives the next pull lines (they come ~1 s apart)
+    private const float LevelUpHoldS = 4f;   // the level-up / skipped line outlives the next pull lines
 
-    private void SetFooter(FooterEvent ev, int entryId = 0)
+    // `extra`: Better = the entryId of the copy it beats ("was 2.72%"); Skipped = the Group of the waiting row the slot is
+    // kept for. Ids, not text, so a language switch re-words the line.
+    private void SetFooter(FooterEvent ev, int entryId = 0, int extra = 0)
     {
         // "Stopping…" stays until the run ends; a later pull/store line must not hide that the stop was heard.
         if (_stopRequested && ev != FooterEvent.Stopping) ev = FooterEvent.Stopping;
-        if (_fbEvent == FooterEvent.LevelUp && ev == FooterEvent.Pull && FwNow < _fbHoldUntil) return;
-        _fbEvent = ev; _fbPull = _runPulls; _fbEntry = entryId; _fbStored = _st.Stored; _fbLimit = _st.StoreLimit;
+        // The level-up and skipped-upgrade lines are held over the next pull line (they come ~1 s apart).
+        if ((_fbEvent == FooterEvent.LevelUp || _fbEvent == FooterEvent.Skipped) && ev == FooterEvent.Pull && FwNow < _fbHoldUntil) return;
+        _fbEvent = ev; _fbPull = _runPulls; _fbEntry = entryId; _fbExtra = extra; _fbStored = _st.Stored; _fbLimit = _st.StoreLimit;
+        if (ev == FooterEvent.Skipped) _fbHoldUntil = FwNow + LevelUpHoldS;
         _fbVer++;
         MarkMain();
     }
@@ -61,11 +65,17 @@ public sealed partial class Plugin
             FooterEvent.Stopping => _loc.T(KeyLogStopping),
             FooterEvent.Pull     => _loc.TFormat(KeyLogPull, _fbPull, _fbStored, _fbLimit),
             FooterEvent.Stored   => _loc.TFormat(KeyLogStored, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), _fbStored, _fbLimit),
+            FooterEvent.Better   => _loc.TFormat(KeyLogBetter, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), ValueOf(_fbExtra),
+                                                 _fbStored, _fbLimit),
+            FooterEvent.Skipped  => _loc.TFormat(KeyLogSkipped, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), NameOfGroup(_fbExtra)),
             FooterEvent.LevelUp  => _fbNames.Length > 0 ? _loc.TFormat(KeyLogLevelUpReach, _fbFrom, _fbTo, _fbNames)
                                                     : _loc.TFormat(KeyLogLevelUp, _fbFrom, _fbTo),
             _                    => _loc.T(KeyLogStarting),
         };
     }
+
+    // The skipped-upgrade line is amber (spec ⑦); every other footer line is muted.
+    private ColorRgba FooterColor() => Running && _fbEvent == FooterEvent.Skipped ? GateColor() : MutedColor();
 
     // "Matrix Lv 3 to Lv 4 · Soaring Flame can roll now" ("to", not an arrow glyph: it draws blank in the game font).
     private void SetFooterLevelUp(int from, int to, string names)
@@ -85,7 +95,15 @@ public sealed partial class Plugin
 
     private string EndLineText() => _endComposed.Get(_langGen);
 
-    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix();
+    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix() + EndBetterSuffix();
+
+    // " · 1 better roll kept" / " · 3 better rolls kept" (spec ⑦), only when the run stored at least one.
+    private string EndBetterSuffix() => _endBetter switch
+    {
+        <= 0 => string.Empty,
+        1    => _loc.T(KeyEndBetterOne),
+        _    => _loc.TFormat(KeyEndBetterMany, _endBetter),
+    };
 
     private string ComposeEndReason() => _endReason switch
     {

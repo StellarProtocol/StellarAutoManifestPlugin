@@ -10,7 +10,8 @@ namespace Stellar.AutoManifest;
 /// Top → bottom:
 ///   ToolHeader [40 px accent tile | bold title / ONE live status line / thin spent-vs-limit bar while running]
 ///   TARGETS    hint "stops when all are stored" · 5 reserved rows, scrolling past 5 · "+ Add target"
-///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · spend limit · keep free
+///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Keep better rolls On/Off
+///              (+ muted sub-line) · spend limit · keep free
 ///   MATERIALS  hint "live" · Remnant / Dawn Prism counts
 ///   footer     Start (Primary, 120) or Stop (Danger, 120) + one line: last run / run log / end line with badge
 /// Everything below the header sits in a <see cref="ConfirmHostElement"/>, so the Start confirm (③) locks it modally.
@@ -23,6 +24,7 @@ public sealed partial class Plugin
     private const float StatusLineH = 16f;
     private const float ProgressH   = 4f;
     private const float SettingRowH = 28f;
+    private const float SettingRowSubH = 30f;   // "Keep better rolls" row: label + muted sub-line
     private const float MaterialRowH = 22f;
     private const float StartPillW  = 120f;   // Start and Stop share it (approved)
     private const float RunDropdownW = 110f;
@@ -99,6 +101,9 @@ public sealed partial class Plugin
             ChoiceChip(() => _loc.T(KeyPull10), () => _pullTen, () => SetPullTen(true), PullChipW, PanelColor, () => Running),
         }, Gap: 4f)),
         SettingRow(BlessingLabel, OnOffChip(() => _useBlessing, SetUseBlessing, () => !_st.BlessAllowed)),
+        // spec ⑦: one row with a muted sub-line; the setter ignores clicks while a run is going (like Blessing).
+        SettingRowSub(() => _loc.T(KeyKeepBetter), () => _loc.T(KeyKeepBetterHint),
+            OnOffChip(() => _keepBetter, SetKeepBetter, () => false)),
         SettingRow(() => _loc.T(KeySpend), RunDropdown(() => _spendIndex, SpendOptions, SetSpendIndex)),
         SettingRow(() => _loc.T(KeyKeepFree), RunDropdown(() => _keepFreeIndex, KeepFreeOptions, SetKeepFreeIndex)),
     });
@@ -108,6 +113,19 @@ public sealed partial class Plugin
         new CellElement(new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
         control,
     }, Gap: 8f));
+
+    // A setting with a muted 11 px sub-line under its label, pinned at one 30 px line (approved: the window grows by this
+    // row once and keeps that height in every state).
+    private HudElement SettingRowSub(Func<string> label, Func<string> sub, HudElement control) => FixedLine(SettingRowSubH,
+        new RowElement(new HudElement[]
+        {
+            new CellElement(new ColumnElement(new HudElement[]
+            {
+                new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true },
+                new TextElement(sub, Color: () => MutedColor(), NoWrap: true, FontSize: 11) { RichEmoji = true, Ellipsize = true },
+            }, Gap: 0f), Weight: 1f),
+            control,
+        }, Gap: 8f));
 
     private static HudElement RunDropdown(Func<int> selected, string[] options, Action<int> onSelect)
         => new CellElement(new DropdownElement(selected, () => options, onSelect, Width: RunDropdownW)
@@ -184,6 +202,6 @@ public sealed partial class Plugin
                     Badge(EndBadgeText, EndBadgeColor, WindowBg, EndBadgeW),
                     new CellElement(SmallText(EndLineText, MutedColor), Weight: 1f),
                 }, Gap: 6f),
-                SmallText(FooterText, MutedColor))), Weight: 1f),
+                SmallText(FooterText, FooterColor))), Weight: 1f),
     }, Gap: 10f));
 }

@@ -92,6 +92,14 @@ public sealed partial class Plugin
     private const string KeyHintNormal       = "am.picker.hintNoBlessing";
     private const string KeyHintNowBless     = "am.picker.hintNowBlessing";
     private const string KeyHintLocked       = "am.picker.hintLocked";
+    // Keep better rolls (spec ⑦)
+    private const string KeyKeepBetter       = "am.run.keepBetter";
+    private const string KeyKeepBetterHint   = "am.run.keepBetterHint";
+    private const string KeyLogBetter        = "am.footer.better";
+    private const string KeyLogSkipped       = "am.footer.betterSkipped";
+    private const string KeyConfirmBetter    = "am.confirm.keepBetter";
+    private const string KeyEndBetterOne     = "am.end.betterOne";
+    private const string KeyEndBetterMany    = "am.end.betterMany";
 
     // Category chips, in picker order; the game's own Lang('SeasonTalentAttrLibName_<id>') wins when it exists.
     private static readonly int[] CategoryLibIds = { 1001, 101, 102, 103, 104, 105 };

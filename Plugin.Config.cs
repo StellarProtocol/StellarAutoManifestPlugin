@@ -26,6 +26,7 @@ public sealed partial class Plugin
     private readonly List<Target> _targets = new();
     private bool _pullTen = true;     // approved default: 10-pull
     private bool _useBlessing = true; // approved default: On
+    private bool _keepBetter;         // "Keep better rolls" (spec ⑦), approved default: Off
     private int _spendIndex = DefaultSpendIndex;
     private int _keepFreeIndex;
 
@@ -38,6 +39,7 @@ public sealed partial class Plugin
         _cfg = _services.Config.GetSection("automanifest");
         _pullTen       = _cfg.Get("pullTen", true);
         _useBlessing   = _cfg.Get("useBlessing", true);
+        _keepBetter    = _cfg.Get("keepBetter", false);
         _spendIndex    = Array.IndexOf(SpendChoices, _cfg.Get("spendLimit", SpendChoices[DefaultSpendIndex]));
         if (_spendIndex < 0) _spendIndex = DefaultSpendIndex;   // a value no longer offered → the default
         _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
@@ -72,6 +74,7 @@ public sealed partial class Plugin
 
     private void SetPullTen(bool v)       { if (Running || _pullTen == v) return; _pullTen = v; _cfg.Set("pullTen", v); _cfg.Save(); MarkMain(); }
     private void SetUseBlessing(bool v)   { if (Running) return; _useBlessing = v; _cfg.Set("useBlessing", v); _cfg.Save(); UpdateReach(); MarkMain(); }
+    private void SetKeepBetter(bool v)    { if (Running || _keepBetter == v) return; _keepBetter = v; _cfg.Set("keepBetter", v); _cfg.Save(); MarkMain(); }
 
     private void SetSpendIndex(int i)
     {
@@ -138,6 +141,7 @@ public sealed partial class Plugin
         foreach (var t in _targets)
             if (_catalog.ByGroup.TryGetValue(t.Group, out var imp) && imp.Steps.Length > 0)
                 t.MinStep = Math.Clamp(t.MinStep, 0, imp.Steps.Length - 1);
+        foreach (var t in _targets) t.RecomputeBest(_catalog);   // copies' value steps come from the live table
         TargetsChanged();
     }
 }
