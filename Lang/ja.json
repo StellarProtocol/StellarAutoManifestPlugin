@@ -22,7 +22,7 @@
   "am.run.pull10": "10連",
   "am.run.blessing": "祝福を使う（{0} · 所持{1}）",
   "am.run.keepBetter": "より良い結果も保存",
-  "am.run.keepBetterHint": "保存済みの目標もより高い値を取ります（1件ごとにポケット1枠）",
+  "am.run.keepBetterHint": "より高い値も保存 · ポケット1枠を使用",
   "am.run.spend": "消費上限（残滓）",
   "am.run.keepFree": "ポケットの空き枠を残す",
   "am.materials.caption": "素材",

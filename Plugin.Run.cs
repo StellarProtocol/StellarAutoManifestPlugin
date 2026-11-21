@@ -96,8 +96,10 @@ public sealed partial class Plugin
         var body = _useBlessing && _st.BlessAllowed
             ? _loc.TFormat(KeyConfirmBless, N0(remnants), RemnantName(), N0(prisms), PrismName())
             : _loc.TFormat(KeyConfirmBody, N0(remnants), RemnantName());
-        // spec ⑦: a muted second line, only when "Keep better rolls" is on (the card's Message is the muted text).
-        return _keepBetter ? body + "\n" + _loc.T(KeyConfirmBetter) : body;
+        // spec ⑦: its own muted paragraph, only when "Keep better rolls" is on (the card's Message is the muted text).
+        // The Message is a plain wrapping uGUI Text, so "\n" does break — but one break read as the same paragraph
+        // (in-game 2026-11-22); a blank line between them separates it.
+        return _keepBetter ? body + "\n\n" + _loc.T(KeyConfirmBetter) : body;
     }
 
     private void BeginRun()

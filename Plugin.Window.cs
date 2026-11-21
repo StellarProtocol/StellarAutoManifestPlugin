@@ -24,7 +24,9 @@ public sealed partial class Plugin
     private const float StatusLineH = 16f;
     private const float ProgressH   = 4f;
     private const float SettingRowH = 28f;
-    private const float SettingRowSubH = 30f;   // "Keep better rolls" row: label + muted sub-line
+    private const float SettingRowSubH = 34f;   // "Keep better rolls" row: label + muted sub-line (18 + 15 + 1 slack)
+    private const float SubLabelH   = 18f;   // its 14 px label line, pinned (TextElement.Height)
+    private const float SubLineH    = 15f;   // its 11 px sub-line, pinned
     private const float MaterialRowH = 22f;
     private const float StartPillW  = 120f;   // Start and Stop share it (approved)
     private const float RunDropdownW = 110f;
@@ -114,15 +116,19 @@ public sealed partial class Plugin
         control,
     }, Gap: 8f));
 
-    // A setting with a muted 11 px sub-line under its label, pinned at one 30 px line (approved: the window grows by this
-    // row once and keeps that height in every state).
+    // A setting with a muted 11 px sub-line under its label: one left-aligned two-line block, vertically centred in the
+    // row with the chip (the row is an HLG → MiddleLeft). Both lines get a pinned TextElement.Height: unpinned, the TMP
+    // sub-line's line box measured far taller than 11 px and the label's ~20, so the column outgrew the FixedLine strut
+    // (a strut is only a MINIMUM) — the row swelled to ~52 px with the label high, the sub-line low and the chip between
+    // (in-game 2026-11-22). Pinned, the block is 33 px in the 34 px row, so the window keeps one height in every state.
     private HudElement SettingRowSub(Func<string> label, Func<string> sub, HudElement control) => FixedLine(SettingRowSubH,
         new RowElement(new HudElement[]
         {
             new CellElement(new ColumnElement(new HudElement[]
             {
-                new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true },
-                new TextElement(sub, Color: () => MutedColor(), NoWrap: true, FontSize: 11) { RichEmoji = true, Ellipsize = true },
+                new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true, Height = SubLabelH },
+                new TextElement(sub, Color: () => MutedColor(), NoWrap: true, FontSize: 11)
+                    { RichEmoji = true, Ellipsize = true, Height = SubLineH },
             }, Gap: 0f), Weight: 1f),
             control,
         }, Gap: 8f));

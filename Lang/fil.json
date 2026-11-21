@@ -22,7 +22,7 @@
   "am.run.pull10": "10 hila",
   "am.run.blessing": "Gamitin ang Blessing ({0} · may {1})",
   "am.run.keepBetter": "Itabi ang mas magandang roll",
-  "am.run.keepBetterHint": "kukuha rin ng mas mataas na value ang naitabing target (dagdag na isang slot bawat isa)",
+  "am.run.keepBetterHint": "itatabi rin ang mas mataas na roll · gagamit ng 1 slot",
   "am.run.spend": "Gastusin hanggang (Remnant)",
   "am.run.keepFree": "Mag-iwan ng bakanteng slot",
   "am.materials.caption": "Materyales",
