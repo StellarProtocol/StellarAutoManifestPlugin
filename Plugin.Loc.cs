@@ -100,6 +100,10 @@ public sealed partial class Plugin
     private const string KeyConfirmBetter    = "am.confirm.keepBetter";
     private const string KeyEndBetterOne     = "am.end.betterOne";
     private const string KeyEndBetterMany    = "am.end.betterMany";
+    // Typed spend limit, 0 = no limit (spec ⑪, Plugin.SpendInput.cs)
+    private const string KeySpendNoLimit       = "am.run.spendNoLimit";
+    private const string KeyStatusRunningFree  = "am.status.runningNoLimit";
+    private const string KeyConfirmNoLimit     = "am.confirm.bodyNoLimit";
     // Pocket window + discard (spec ⑨, Plugin.Pocket*.cs)
     private const string KeyClose              = "am.ui.close";
     private const string KeyPocketPill         = "am.targets.pocket";

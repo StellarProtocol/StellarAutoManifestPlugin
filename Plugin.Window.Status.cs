@@ -12,7 +12,8 @@ public sealed partial class Plugin
 {
     // ── header status ─────────────────────────────────────────────────────────────────────────────────────────────
     // Idle: "Ready · Matrix Lv.2 · Pocket 1/5 · looting class: Twin Striker"; running: "Running · pull 23 · 552 / 1,200
-    // Remnants". The cache key is every input that can change the text.
+    // Remnants" (no limit: "Running · pull 23 · 552 Remnants used"). The cache key is every input that can change the
+    // text; the limit can't change mid-run (the field is locked).
     private (bool ready, bool valid, bool running, int a, int b, int c, long d, string prof, int gen) _statusKey;
     private string _statusText = string.Empty;
 
@@ -23,7 +24,8 @@ public sealed partial class Plugin
             : (_catalogReady, _st.Valid, false, _st.Level, _st.Stored, _st.StoreLimit, (long)SpendLimit, _profName, _langGen);
         if (key == _statusKey && _statusText.Length > 0) return _statusText;
         _statusKey = key;
-        _statusText = Running ? _loc.TFormat(KeyStatusRunning, _runPulls, N0(_runSpent), N0(SpendLimit))
+        _statusText = Running ? (SpendLimit > 0 ? _loc.TFormat(KeyStatusRunning, _runPulls, N0(_runSpent), N0(SpendLimit))
+                                                : _loc.TFormat(KeyStatusRunningFree, _runPulls, N0(_runSpent)))   // spec ⑪: no limit
                     : !_catalogReady ? _loc.T(KeyStatusLoading)
                     : !_st.Valid ? _loc.T(KeyStatusNoData)
                     : _loc.TFormat(KeyStatusReady, _st.Level, _st.Stored, _st.StoreLimit, _profName.Length > 0 ? _profName : "—");

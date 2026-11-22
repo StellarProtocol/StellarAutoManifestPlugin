@@ -88,6 +88,7 @@ public sealed partial class Plugin : IStellarPlugin
         if (now < _nextTickAt) return;
         _nextTickAt = now + TickS;
 
+        if (_spendDraft != null) SpendDraftTick();   // typed spend limit: commit on focus loss (Plugin.SpendInput.cs)
         if (Running) { RunTick(now); return; }
         if (_discardBusy) DiscardTick(now);   // a pocket discard's reply is awaited even with every window closed
         if (!_mainWindow.IsShown && !_pickerWindow.IsShown && !_pocketWindow.IsShown) return;   // nothing to show → no game reads
@@ -129,6 +130,7 @@ public sealed partial class Plugin : IStellarPlugin
     // Closing the window stops the run (after the request in flight) and drops the picker, the pocket + an open confirm.
     private void CloseMain()
     {
+        CommitSpendDraft();
         if (Running) OnStopClicked();
         _confirm.Cancel();
         ClosePicker();

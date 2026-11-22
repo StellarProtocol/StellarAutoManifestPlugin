@@ -15,11 +15,10 @@ public sealed partial class Plugin
 {
     private const int MaxTargets = 12;   // row pool size; "+ Add target" recesses when full
 
-    // "Spend at most (Remnants)" choices (approved default 1,200) and "Keep pocket slots free" 0..5 (default 0).
-    private static readonly int[] SpendChoices = { 300, 600, 1200, 2400, 3600, 6000, 12000 };
-    private const int DefaultSpendIndex = 2;
+    // "Spend at most (Remnants)": a typed number (spec ⑪, Plugin.SpendInput.cs), approved default 1,200, 0 = no limit.
+    // "Keep pocket slots free" 0..5 (default 0).
+    private const int DefaultSpendLimit = 1200;
     private static readonly int[] KeepFreeChoices = { 0, 1, 2, 3, 4, 5 };
-    private static readonly string[] SpendOptions = Array.ConvertAll(SpendChoices, v => N0(v));
     private static readonly string[] KeepFreeOptions = Array.ConvertAll(KeepFreeChoices, v => v.ToString(CultureInfo.InvariantCulture));
 
     private IConfigSection _cfg = null!;
@@ -27,10 +26,10 @@ public sealed partial class Plugin
     private bool _pullTen = true;     // approved default: 10-pull
     private bool _useBlessing = true; // approved default: On
     private bool _keepBetter = true;  // "Keep better rolls" (spec ⑦), default On (user 2026-11-22, was Off)
-    private int _spendIndex = DefaultSpendIndex;
+    private int _spendLimit = DefaultSpendLimit;
     private int _keepFreeIndex;
 
-    private int SpendLimit => SpendChoices[Math.Clamp(_spendIndex, 0, SpendChoices.Length - 1)];
+    private int SpendLimit => _spendLimit;   // 0 = no limit (spec ⑪)
     private int KeepFree => KeepFreeChoices[Math.Clamp(_keepFreeIndex, 0, KeepFreeChoices.Length - 1)];
     private int PullTimes => _pullTen ? 10 : 1;
 
@@ -40,8 +39,8 @@ public sealed partial class Plugin
         _pullTen       = _cfg.Get("pullTen", true);
         _useBlessing   = _cfg.Get("useBlessing", true);
         _keepBetter    = _cfg.Get("keepBetter", true);    // a saved value wins; unset = the new default On
-        _spendIndex    = Array.IndexOf(SpendChoices, _cfg.Get("spendLimit", SpendChoices[DefaultSpendIndex]));
-        if (_spendIndex < 0) _spendIndex = DefaultSpendIndex;   // a value no longer offered → the default
+        // Same key the old dropdown wrote (an int), so a saved choice carries over as the typed value.
+        _spendLimit    = Math.Max(0, _cfg.Get("spendLimit", DefaultSpendLimit));
         _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
 
         // "group:step[:mark],…" — a stale group (another season's table) is kept and simply never matches; it shows
@@ -76,10 +75,11 @@ public sealed partial class Plugin
     private void SetUseBlessing(bool v)   { if (Running) return; _useBlessing = v; _cfg.Set("useBlessing", v); _cfg.Save(); UpdateReach(); MarkMain(); }
     private void SetKeepBetter(bool v)    { if (Running || _keepBetter == v) return; _keepBetter = v; _cfg.Set("keepBetter", v); _cfg.Save(); MarkMain(); }
 
-    private void SetSpendIndex(int i)
+    private void SetSpendLimit(int v)
     {
-        if (Running || i < 0 || i >= SpendChoices.Length) return;
-        _spendIndex = i; _cfg.Set("spendLimit", SpendChoices[i]); _cfg.Save(); MarkMain();
+        v = Math.Max(0, v);
+        if (Running || v == _spendLimit) return;
+        _spendLimit = v; _cfg.Set("spendLimit", v); _cfg.Save(); MarkMain();
     }
 
     private void SetKeepFreeIndex(int i)

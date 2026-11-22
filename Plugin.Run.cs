@@ -44,6 +44,7 @@ public sealed partial class Plugin
     private int _runBetter;      // "Keep better rolls" stores this run (spec ⑦)
     private int _planWasEntry;   // upgrade plan: the entryId of the best copy it beats (footer "was 2.72%")
     private long _runSpent;
+    private long _runStartRemnants;   // Remnants owned at Start: the progress bar's whole when there is no spend limit (spec ⑪)
     private bool _rollBless;
     private string _sigBefore = string.Empty;
     private ReforgeState _st = new();
@@ -75,6 +76,7 @@ public sealed partial class Plugin
 
     private void OnStartClicked()
     {
+        CommitSpendDraft();   // a typed limit still in the field counts (the Start click can beat the focus-loss tick)
         if (!CanStart()) return;
         ClosePicker();
         _confirm.Show(new ConfirmRequest(_loc.T(KeyConfirmTitle), ConfirmBody(), BeginRun)
@@ -88,26 +90,33 @@ public sealed partial class Plugin
     // size, like the run (Cycle stops before a batch that would pass the limit): batches = limit / (cost × size), e.g.
     // 300 / (12 × 10) = 2 → 240 Remnants, 20 Prism (one per pull). "Up to": the cost per pull can rise if the level
     // goes up mid-run, which only lowers these. The Prism part only when Blessing is on and usable.
+    // No spend limit (0, spec ⑪): its own sentence instead — there is nothing to count.
     private string ConfirmBody()
     {
-        int size = PullTimes;
-        int batchCost = _st.CostPerPull * size;
-        int batches = batchCost > 0 ? SpendLimit / batchCost : 0;
-        long remnants = (long)batches * batchCost;
-        long prisms = (long)batches * size;
-        var body = _useBlessing && _st.BlessAllowed
-            ? _loc.TFormat(KeyConfirmBless, N0(remnants), RemnantName(), N0(prisms), PrismName())
-            : _loc.TFormat(KeyConfirmBody, N0(remnants), RemnantName());
+        var body = SpendLimit > 0 ? ConfirmSpendLine() : _loc.TFormat(KeyConfirmNoLimit, RemnantName());
         // spec ⑦: its own muted paragraph, only when "Keep better rolls" is on (the card's Message is the muted text).
         // The Message is a plain wrapping uGUI Text, so "\n" does break — but one break read as the same paragraph
         // (in-game 2026-11-22); a blank line between them separates it.
         return _keepBetter ? body + "\n\n" + _loc.T(KeyConfirmBetter) : body;
     }
 
+    private string ConfirmSpendLine()
+    {
+        int size = PullTimes;
+        int batchCost = _st.CostPerPull * size;
+        int batches = batchCost > 0 ? SpendLimit / batchCost : 0;
+        long remnants = (long)batches * batchCost;
+        long prisms = (long)batches * size;
+        return _useBlessing && _st.BlessAllowed
+            ? _loc.TFormat(KeyConfirmBless, N0(remnants), RemnantName(), N0(prisms), PrismName())
+            : _loc.TFormat(KeyConfirmBody, N0(remnants), RemnantName());
+    }
+
     private void BeginRun()
     {
         if (!CanStart()) return;
         _runPulls = 0; _runSpent = 0; _runBetter = 0; _stopRequested = false;
+        _runStartRemnants = _st.Remnants;
         _lastReplyAt = float.NegativeInfinity;
         _endReason = EndReason.None;
         SetFooter(FooterEvent.Starting);
@@ -165,7 +174,7 @@ public sealed partial class Plugin
         int times = PullTimes;
         bool bless = _useBlessing && _st.BlessAllowed;   // re-evaluated per pull: the level moves during a run
         int cost = _st.CostPerPull * times;              // re-read every pull: the level (and cost) changes with Blessing
-        if (_runSpent + cost > SpendLimit) { End(EndReason.SpendLimit); return; }
+        if (SpendLimit > 0 && _runSpent + cost > SpendLimit) { End(EndReason.SpendLimit); return; }   // 0 = no limit (spec ⑪)
         if (times == 10 ? !_st.ConsumeOk10 : !_st.ConsumeOk1) { End(EndReason.NoRemnants); return; }
         if (bless && _st.Prisms < times) { End(EndReason.NoPrism); return; }
 

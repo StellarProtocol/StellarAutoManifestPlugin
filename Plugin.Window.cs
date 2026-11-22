@@ -11,7 +11,7 @@ namespace Stellar.AutoManifest;
 ///   ToolHeader [40 px accent tile | bold title / ONE live status line / thin spent-vs-limit bar while running]
 ///   TARGETS    hint "stops when all are stored" · 7 reserved rows, scrolling past 7 · "+ Add target"
 ///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Keep better rolls On/Off
-///              (+ muted sub-line) · spend limit · keep free
+///              (+ muted sub-line) · spend limit (typed, 0 = no limit) · keep free
 ///   MATERIALS  hint "live" · Remnant / Dawn Prism counts
 ///   footer     Start (Primary, 120) or Stop (Danger, 120) + one line: last run / run log / end line with badge
 /// Everything below the header sits in a <see cref="ConfirmHostElement"/>, so the Start confirm (③) locks it modally.
@@ -91,8 +91,13 @@ public sealed partial class Plugin
         TrackColorFn = () => Fade(Over(TextColor() with { A = 0.10f }, WindowBg())),
     };
 
-    // Spent / limit, quantized to ~1 px of a 300 px bar so it re-meshes only when it visibly moves (§5).
-    private float Progress() => SpendLimit <= 0 ? 0f : MathF.Round(Math.Clamp(_runSpent / (float)SpendLimit, 0f, 1f) * 300f) / 300f;
+    // Spent / limit — or, with no limit (spec ⑪), spent / Remnants owned at Start — quantized to ~1 px of a 300 px bar so
+    // it re-meshes only when it visibly moves (§5).
+    private float Progress()
+    {
+        long of = SpendLimit > 0 ? SpendLimit : _runStartRemnants;
+        return of <= 0 ? 0f : MathF.Round(Math.Clamp(_runSpent / (float)of, 0f, 1f) * 300f) / 300f;
+    }
 
     // ── RUN ───────────────────────────────────────────────────────────────────────────────────────────────────────
     private HudElement BuildRunPanel() => SectionPanel(KeyRunCaption, RunHint, new[]
@@ -106,7 +111,7 @@ public sealed partial class Plugin
         // spec ⑦: one row with a muted sub-line; the setter ignores clicks while a run is going (like Blessing).
         SettingRowSub(() => _loc.T(KeyKeepBetter), () => _loc.T(KeyKeepBetterHint),
             OnOffChip(() => _keepBetter, SetKeepBetter, () => false)),
-        SettingRow(() => _loc.T(KeySpend), RunDropdown(() => _spendIndex, SpendOptions, SetSpendIndex)),
+        SettingRow(() => _loc.T(KeySpend), SpendControl()),   // typed number, 0 = no limit (spec ⑪, Plugin.SpendInput.cs)
         SettingRow(() => _loc.T(KeyKeepFree), RunDropdown(() => _keepFreeIndex, KeepFreeOptions, SetKeepFreeIndex)),
     });
 
