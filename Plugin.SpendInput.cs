@@ -1,5 +1,7 @@
 using System;
 using Stellar.Abstractions.Services;
+using TMPro;
+using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
@@ -11,10 +13,14 @@ namespace Stellar.AutoManifest;
 /// the box), locked while a run is going. Same config key as the old dropdown (<c>spendLimit</c>, an int).
 /// <para>Toolkit limits behind the plumbing (WindowBuilder-Patterns.md):</para>
 /// <list type="bullet">
-/// <item><see cref="InputElement"/> submits on Enter only — there is no blur callback and no focus readback. So the
-/// first edit of a session resolves the live uGUI field from the EventSystem (it is the selected object while the user
-/// types) and the 10 Hz tick watches its <c>isFocused</c> only while a draft is open: one native read per tick, no
-/// allocation, nothing at all while not editing.</item>
+/// <item><see cref="InputElement"/> submits on Enter only — there is no blur callback and no focus readback. So while a
+/// draft is open the plugin resolves the live uGUI field from the EventSystem (it is the selected object while the user
+/// types) and the 10 Hz tick watches its <c>isFocused</c>: one native read per tick, no allocation, nothing at all while
+/// not editing.</item>
+/// <item>⚠️ The field's TYPE depends on the framework that runs, not on the SDK we build against: up to 2.33 a plain
+/// InputElement is the legacy <see cref="InputField"/>, from 2.34.0 (#169, Thai text) it is ALWAYS a
+/// <see cref="TMP_InputField"/>. Looking for the legacy type only found nothing on 2.34 (in-game 2026-11-22: the typed
+/// limit committed on Enter only), so both are matched.</item>
 /// <item><c>Get</c> must return the RAW draft while editing, never the formatted number, or the framework re-seeds
 /// "1,200" mid-typing (Position 2.1.0 finding). It flips back to the formatted value on commit.</item>
 /// <item>A rejected character can't be removed through <c>Get</c>: the field binding diffs <c>Get()</c> against its last
@@ -24,17 +30,22 @@ namespace Stellar.AutoManifest;
 /// </summary>
 public sealed partial class Plugin
 {
-    private const float SpendInputW    = 96f;
-    private const float SpendHintW     = 110f;
-    private const int   SpendMaxDigits = 9;   // 999,999,999 < int.MaxValue
+    private const float  SpendInputW         = 96f;
+    private const float  SpendHintW          = 110f;
+    private const int    SpendMaxDigits      = 9;    // 999,999,999 < int.MaxValue
+    private const int    SpendLookupMaxTries = 10;   // ~1 s of 10 Hz ticks; still not found → warn once and stop looking
+    private const string MainWindowId        = "automanifest.main";   // the main WindowSpec Id = its root's name
 
-    private string? _spendDraft;      // digits typed since the last commit; null = not editing (the field shows SpendText)
-    private InputField? _spendField;  // the live field, resolved on the first edit of a session
-    private bool _spendFieldSeen;     // resolved this session → the tick may commit on focus loss
+    private string? _spendDraft;          // digits typed since the last commit; null = not editing (the field shows SpendText)
+    private InputField? _spendField;      // the live field, resolved while a draft is open: legacy (fw ≤ 2.33) …
+    private TMP_InputField? _spendTmp;    // … or TMP (fw ≥ 2.34). At most one is set.
+    private int _spendLookupTries;        // failed lookups for the open draft (keystrokes + ticks)
     private bool _spendFieldWarned;
-    private bool _spendCleaning;      // our own write of the cleaned text echoes through OnChange
+    private bool _spendCleaning;          // our own write of the cleaned text echoes through OnChange
     private int _spendTextFor = -1;
     private string _spendText = string.Empty;
+
+    private bool SpendFieldResolved => _spendField != null || _spendTmp != null;
 
     // "1,200", re-formatted only when the committed value changes.
     private string SpendText()
@@ -62,12 +73,19 @@ public sealed partial class Plugin
         if (_spendCleaning || Running) return;
         s ??= string.Empty;
         if (_spendDraft == null && s == SpendText()) return;   // the re-seed echo after a commit, not an edit
-        if (_spendDraft == null) ResolveSpendField();
+        if (_spendDraft == null) _spendLookupTries = 0;
+        // Every keystroke retries until found (a keystroke is the moment the field is certainly selected); the tick
+        // retries too, for a draft that began on an echo rather than a keystroke.
+        if (!SpendFieldResolved) TryResolveSpendField();
         var clean = SpendDigits(s);
         _spendDraft = clean;
-        if (clean.Length == s.Length || _spendField == null) return;
+        if (clean.Length == s.Length || !SpendFieldResolved) return;
         _spendCleaning = true;
-        try { _spendField.text = clean; _spendField.caretPosition = clean.Length; }
+        try
+        {
+            if (_spendTmp != null) { _spendTmp.text = clean; _spendTmp.caretPosition = clean.Length; }
+            else if (_spendField != null) { _spendField.text = clean; _spendField.caretPosition = clean.Length; }
+        }
         catch (Exception ex) { _services.Log.Warning($"[AutoManifest] spend field clean failed: {ex.Message}"); }
         finally { _spendCleaning = false; }
     }
@@ -84,37 +102,61 @@ public sealed partial class Plugin
     {
         if (_spendDraft == null) return;
         var d = _spendDraft;
-        _spendDraft = null; _spendField = null; _spendFieldSeen = false;
+        _spendDraft = null; _spendField = null; _spendTmp = null; _spendLookupTries = 0;
         SetSpendLimit(d.Length == 0 ? 0 : int.Parse(d, System.Globalization.CultureInfo.InvariantCulture));
         MarkMain();   // Get() flips back to the formatted value → the field re-seeds "1,200" even when the value didn't move
     }
 
-    // 10 Hz, only while a draft is open: focus gone (click-away, Esc, window closed) = commit.
+    // 10 Hz, only while a draft is open: focus gone (click-away, Esc, window closed) = commit. A click elsewhere
+    // deselects the field and uGUI's OnDeselect deactivates it (both field types), so isFocused alone covers "the
+    // selection moved" without reading currentSelectedGameObject (a fresh interop wrapper) on every tick.
     private void SpendDraftTick()
     {
-        if (!_spendFieldSeen) return;   // field never found: Enter / Start / closing the window commit instead
+        if (!SpendFieldResolved)
+        {
+            if (_spendLookupTries < SpendLookupMaxTries) { TryResolveSpendField(); return; }   // found → poll from the next tick
+            if (_spendFieldWarned) return;
+            _spendFieldWarned = true;   // once a session; Enter / Start / closing the window still commit
+            _services.Log.Warning("[AutoManifest] spend field not found: the typed limit commits on Enter only");
+            return;
+        }
         bool focused;
-        try { focused = _spendField != null && _spendField.isFocused; }
+        try { focused = _spendTmp != null ? _spendTmp.isFocused : _spendField != null && _spendField.isFocused; }
         catch { focused = false; }
         if (!focused) CommitSpendDraft();
     }
 
-    // The field the user is typing in is the EventSystem's selected object (UGuiTextInput selects it on focus). Plain
-    // InputElement = the legacy uGUI InputField (RichEmoji would be TMP).
-    private void ResolveSpendField()
+    // The field the user is typing in is the EventSystem's selected object (UGuiTextInput selects it on focus). Match
+    // either field type, focused, under the main window's root (the framework names it after the WindowSpec Id, so the
+    // picker's search box can never be taken for it). Runs only while a draft is open and unresolved.
+    private bool TryResolveSpendField()
     {
-        _spendField = null; _spendFieldSeen = false;
         try
         {
             var es = EventSystem.current;
             var go = es != null ? es.currentSelectedGameObject : null;
-            var f = go != null ? go.GetComponent<InputField>() : null;
-            if (f != null && f.isFocused) { _spendField = f; _spendFieldSeen = true; }
+            if (go != null && IsUnderMainWindow(go.transform))
+            {
+                var tmp = go.GetComponent<TMP_InputField>();
+                if (tmp != null && tmp.isFocused) { _spendTmp = tmp; return true; }
+                var f = go.GetComponent<InputField>();
+                if (f != null && f.isFocused) { _spendField = f; return true; }
+            }
         }
-        catch (Exception ex) { _services.Log.Warning($"[AutoManifest] spend field lookup failed: {ex.Message}"); }
-        if (_spendFieldSeen || _spendFieldWarned) return;
-        _spendFieldWarned = true;
-        _services.Log.Warning("[AutoManifest] spend field not found: the typed limit commits on Enter only");
+        catch (Exception ex)
+        {
+            if (!_spendFieldWarned) _services.Log.Warning($"[AutoManifest] spend field lookup failed: {ex.Message}");
+            _spendFieldWarned = true;
+        }
+        _spendLookupTries++;
+        return false;
+    }
+
+    private static bool IsUnderMainWindow(Transform? t)
+    {
+        for (; t != null; t = t.parent)
+            if (t.name == MainWindowId) return true;
+        return false;
     }
 
     private static string SpendDigits(string s)

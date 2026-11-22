@@ -38,7 +38,7 @@ public sealed partial class Plugin
 
     private IWindowControl RegisterMain() => _services.Windows.Register(new WindowRegistration(
         new WindowSpec(
-            Id:          "automanifest.main",
+            Id:          MainWindowId,
             Title:       _loc.T(KeyTitle),
             DefaultRect: new WindowRect(20f, 120f, WindowWidth, 0f),   // 0 height = content-sized (content never changes height)
             Category:    WindowCategory.Tools,
