@@ -26,7 +26,7 @@
   "am.run.keepBetterHint": "목표마다 남길 개수, 가장 낮은 것을 교체합니다",
   "am.run.keepBest": "최고만 (교체)",
   "am.run.keepUpTo": "최대 {0}개",
-  "am.run.keepNoCap": "제한 없음 (버리지 않음)",
+  "am.run.keepNoCap": "제한 없음",
   "am.run.spend": "최대 사용량 (잔재)",
   "am.run.spendNoLimit": "0 = 제한 없음",
   "am.run.keepFree": "보관함 빈칸 남기기",

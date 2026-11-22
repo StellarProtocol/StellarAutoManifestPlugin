@@ -26,7 +26,7 @@
   "am.run.keepBetterHint": "salinan per target; yang terendah ditukar",
   "am.run.keepBest": "Terbaik saja (tukar)",
   "am.run.keepUpTo": "Hingga {0}",
-  "am.run.keepNoCap": "Tanpa batas (tak dibuang)",
+  "am.run.keepNoCap": "Tanpa batas",
   "am.run.spend": "Pakai paling banyak (Remnant)",
   "am.run.spendNoLimit": "0 = tanpa batas",
   "am.run.keepFree": "Sisakan slot kantong kosong",

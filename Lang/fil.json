@@ -26,7 +26,7 @@
   "am.run.keepBetterHint": "kopya bawat target; ang pinakamababa ang papalitan",
   "am.run.keepBest": "Pinakamaganda lang (palit)",
   "am.run.keepUpTo": "Hanggang {0}",
-  "am.run.keepNoCap": "Walang limit (di itatapon)",
+  "am.run.keepNoCap": "Walang limit",
   "am.run.spend": "Gastusin hanggang (Remnant)",
   "am.run.spendNoLimit": "0 = walang limit",
   "am.run.keepFree": "Mag-iwan ng bakanteng slot",

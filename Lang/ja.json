@@ -26,7 +26,7 @@
   "am.run.keepBetterHint": "目標ごとに残す数。最も低いものを入れ替えます",
   "am.run.keepBest": "最良のみ（入れ替え）",
   "am.run.keepUpTo": "最大{0}件",
-  "am.run.keepNoCap": "上限なし（破棄しない）",
+  "am.run.keepNoCap": "上限なし",
   "am.run.spend": "消費上限（残滓）",
   "am.run.spendNoLimit": "0 = 上限なし",
   "am.run.keepFree": "ポケットの空き枠を残す",

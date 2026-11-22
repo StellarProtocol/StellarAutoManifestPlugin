@@ -26,7 +26,7 @@
   "am.run.keepBetterHint": "จำนวนที่เก็บต่อเป้าหมาย ค่าต่ำสุดจะถูกสลับออก",
   "am.run.keepBest": "เฉพาะดีที่สุด (สลับ)",
   "am.run.keepUpTo": "สูงสุด {0}",
-  "am.run.keepNoCap": "ไม่จำกัด (ไม่ทิ้งเลย)",
+  "am.run.keepNoCap": "ไม่จำกัด",
   "am.run.spend": "ใช้ได้สูงสุด (เศษ)",
   "am.run.spendNoLimit": "0 = ไม่จำกัด",
   "am.run.keepFree": "เว้นช่องเก็บว่างไว้",
