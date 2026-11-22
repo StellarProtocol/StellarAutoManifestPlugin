@@ -16,7 +16,8 @@ namespace Stellar.AutoManifest;
 /// A row's ✕ (red hover) asks a modal Danger confirm (<see cref="ConfirmHostElement"/>, ALWAYS asked) and then discards
 /// through the game's own pocket-screen call (Lua <c>M.discard</c>). The stored marks follow by themselves: the next
 /// state read no longer holds the uuid, so <see cref="ValidateMarks"/> drops that copy and the target row falls back to
-/// its next copy or to waiting. The plugin never discards on its own and never unlocks slots. Rows:
+/// its next copy or to waiting. This window never discards on its own (only a capped "Keep better rolls" run does,
+/// spec ⑫ — Plugin.Run.Replace.cs; that discard refreshes these rows like any pocket change) and never unlocks slots. Rows:
 /// <c>Plugin.Pocket.Rows.cs</c>.
 /// </summary>
 public sealed partial class Plugin

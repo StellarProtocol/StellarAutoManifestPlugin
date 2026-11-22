@@ -25,9 +25,19 @@ public sealed partial class Plugin
     private readonly List<Target> _targets = new();
     private bool _pullTen = true;     // approved default: 10-pull
     private bool _useBlessing = true; // approved default: On
-    private bool _keepBetter = true;  // "Keep better rolls" (spec ⑦), default On (user 2026-11-22, was Off)
+    private int _keepCopiesIndex = KeepCopiesDefault;   // "Keep better rolls" copy cap (spec ⑫), index into KeepCopiesChoices
     private int _spendLimit = DefaultSpendLimit;
     private int _keepFreeIndex;
+
+    // "Keep better rolls" (spec ⑫, replaces ⑦'s On/Off): copies kept per target INCLUDING the first — Off · Best only
+    // (swap) · Up to 2 · Up to 3 · No cap (never discard). Saved as that number under a NEW key "keepCopies" (0 = Off,
+    // -1 = No cap) so the old bool "keepBetter" can migrate: true → No cap (⑦ never discarded), false → Off, unset →
+    // the default Best only.
+    private static readonly int[] KeepCopiesChoices = { 0, 1, 2, 3, -1 };
+    private const int KeepCopiesDefault = 1;   // Best only
+    private int KeepCopies => KeepCopiesChoices[Math.Clamp(_keepCopiesIndex, 0, KeepCopiesChoices.Length - 1)];
+    // The Matcher's cap: 0 = Off, Matcher.NoCap = never discard.
+    private int KeepCap => KeepCopies < 0 ? Matcher.NoCap : KeepCopies;
 
     private int SpendLimit => _spendLimit;   // 0 = no limit (spec ⑪)
     private int KeepFree => KeepFreeChoices[Math.Clamp(_keepFreeIndex, 0, KeepFreeChoices.Length - 1)];
@@ -38,7 +48,7 @@ public sealed partial class Plugin
         _cfg = _services.Config.GetSection("automanifest");
         _pullTen       = _cfg.Get("pullTen", true);
         _useBlessing   = _cfg.Get("useBlessing", true);
-        _keepBetter    = _cfg.Get("keepBetter", true);    // a saved value wins; unset = the new default On
+        _keepCopiesIndex = LoadKeepCopiesIndex();
         // Same key the old dropdown wrote (an int), so a saved choice carries over as the typed value.
         _spendLimit    = Math.Max(0, _cfg.Get("spendLimit", DefaultSpendLimit));
         _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
@@ -73,7 +83,27 @@ public sealed partial class Plugin
 
     private void SetPullTen(bool v)       { if (Running || _pullTen == v) return; _pullTen = v; _cfg.Set("pullTen", v); _cfg.Save(); MarkMain(); }
     private void SetUseBlessing(bool v)   { if (Running) return; _useBlessing = v; _cfg.Set("useBlessing", v); _cfg.Save(); UpdateReach(); MarkMain(); }
-    private void SetKeepBetter(bool v)    { if (Running || _keepBetter == v) return; _keepBetter = v; _cfg.Set("keepBetter", v); _cfg.Save(); MarkMain(); }
+    private void SetKeepCopiesIndex(int i)
+    {
+        if (Running || i < 0 || i >= KeepCopiesChoices.Length || i == _keepCopiesIndex) return;
+        _keepCopiesIndex = i; _cfg.Set("keepCopies", KeepCopiesChoices[i]); _cfg.Save(); MarkMain();
+    }
+
+    // "keepCopies" wins. Without it, the ⑦ bool: Get can't say "absent", so read it with both defaults — they only
+    // differ when nothing is saved.
+    private int LoadKeepCopiesIndex()
+    {
+        const int unset = int.MinValue;
+        int saved = _cfg.Get("keepCopies", unset);
+        if (saved == unset)
+        {
+            bool a = _cfg.Get("keepBetter", true), b = _cfg.Get("keepBetter", false);
+            if (a != b) return KeepCopiesDefault;   // never saved → Best only
+            saved = a ? -1 : 0;                    // On → No cap (⑦ never discarded), Off → Off
+        }
+        int i = Array.IndexOf(KeepCopiesChoices, saved);
+        return i >= 0 ? i : KeepCopiesDefault;
+    }
 
     private void SetSpendLimit(int v)
     {

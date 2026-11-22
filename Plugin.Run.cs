@@ -29,10 +29,11 @@ public sealed partial class Plugin
     private const float RollGapS        = 1.0f;
     private const int   StorageFullCode = 7580;
 
-    private enum RunPhase : byte { Idle, Cycle, Rolling, AwaitResults, Matching, Storing, AwaitStore, Cooldown }
+    private enum RunPhase : byte { Idle, Cycle, Rolling, AwaitResults, Matching, Storing, AwaitStore, Cooldown, AwaitMark, Discarding, AwaitDiscard }
     private enum EndReason : byte
     {
         None, AllStored, PocketFull, SpendLimit, NoRemnants, NoPrism, Refused, StoreRefused, Timeout, UserStop, LeftWorld,
+        DiscardFailed,   // a capped "Keep better rolls" swap could not discard the old copy (spec ⑫)
     }
 
     private RunPhase _phase;
@@ -81,7 +82,8 @@ public sealed partial class Plugin
         _confirm.Show(new ConfirmRequest(_loc.T(KeyConfirmTitle), ConfirmBody(), BeginRun)
         {
             ConfirmLabel = _loc.T(KeyStart), CancelLabel = _loc.T(KeyCancel), Severity = ConfirmSeverity.Primary,
-            Emphasis = ConfirmReachLine(),   // amber "2 targets can't roll at Lv 2 yet: …" (null = all can roll now)
+            // amber "2 targets can't roll at Lv 2 yet: …" and/or the capped "Keep better rolls" line (spec ⑫); null = neither
+            Emphasis = JoinParagraphs(ConfirmReachLine(), ConfirmCapLine()),
         });
     }
 
@@ -93,10 +95,10 @@ public sealed partial class Plugin
     private string ConfirmBody()
     {
         var body = SpendLimit > 0 ? ConfirmSpendLine() : _loc.TFormat(KeyConfirmNoLimit, RemnantName());
-        // spec ⑦: its own muted paragraph, only when "Keep better rolls" is on (the card's Message is the muted text).
-        // The Message is a plain wrapping uGUI Text, so "\n" does break — but one break read as the same paragraph
-        // (in-game 2026-11-22); a blank line between them separates it.
-        return _keepBetter ? body + "\n\n" + _loc.T(KeyConfirmBetter) : body;
+        // spec ⑦: its own muted paragraph, only with "No cap" (spec ⑫ — a set cap gets its amber line in the Emphasis
+        // instead, Off gets nothing; the card's Message is the muted text). The Message is a plain wrapping uGUI Text,
+        // so "\n" does break — but one break read as the same paragraph (in-game 2026-11-22); a blank line separates it.
+        return KeepCap == Matcher.NoCap ? body + "\n\n" + _loc.T(KeyConfirmBetter) : body;
     }
 
     private string ConfirmSpendLine()
@@ -114,12 +116,13 @@ public sealed partial class Plugin
     private void BeginRun()
     {
         if (!CanStart()) return;
-        _runPulls = 0; _runSpent = 0; _runBetter = 0; _stopRequested = false;
+        _runPulls = 0; _runSpent = 0; _runBetter = 0; _runDiscarded = 0; _stopRequested = false;
+        _swapVictim = null;
         _runStartRemnants = _st.Remnants;
         _lastReplyAt = float.NegativeInfinity;
         _endReason = EndReason.None;
         SetFooter(FooterEvent.Starting);
-        _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} keepBetter={_keepBetter} blessing={_useBlessing}"
+        _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} keepCopies={KeepCopies} blessing={_useBlessing}"
                            + $"(allowed={_st.BlessAllowed}) spendLimit={SpendLimit} keepFree={KeepFree} level={_st.Level} "
                            + $"pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms} exp={_st.Exp} "
                            + $"rollNow={_rollNowTargets} notYet={_unreachTargets} reachable={_reachableTargets}");
@@ -153,6 +156,9 @@ public sealed partial class Plugin
             case RunPhase.Matching:     Match(now); break;
             case RunPhase.Storing:      AwaitStoreReply(now); break;
             case RunPhase.AwaitStore:   AwaitStoreSync(now); break;
+            case RunPhase.AwaitMark:    AwaitSwapMark(now); break;      // capped swap (spec ⑫, Plugin.Run.Replace.cs)
+            case RunPhase.Discarding:   AwaitSwapDiscard(now); break;
+            case RunPhase.AwaitDiscard: AwaitSwapDiscardSync(now); break;
             case RunPhase.Cooldown:
                 if (_stopRequested) End(EndReason.UserStop);
                 else if (now >= _nextRollAt) Cycle(now);
@@ -228,7 +234,7 @@ public sealed partial class Plugin
         RefreshMaterialsFromState();
         // Waiting rows are always planned first; an upgrade ("Keep better rolls", spec ⑦) comes back only when no waiting
         // row has a match in these results.
-        var plan = _catalog == null ? null : Matcher.FirstPlan(_catalog, _targets, _res, _st.RowUnlocked, _keepBetter);
+        var plan = _catalog == null ? null : Matcher.FirstPlan(_catalog, _targets, _res, _st.RowUnlocked, KeepCap);
         int waiting = WaitingCount();
         // Every row stored → Done, even with upgrades left in these results: no pulling or storing just for upgrades.
         if (plan is not { } p || (p.Upgrade && waiting == 0))
@@ -247,14 +253,18 @@ public sealed partial class Plugin
         }
         _plan = p;
         _planWasEntry = p.Upgrade ? _targets[p.TargetIndex].Best?.Entry ?? 0 : 0;
+        _swapVictim = p.Replace ? _targets[p.TargetIndex].Lowest : null;   // the copy it swaps out (spec ⑫), picked NOW
         _sigBefore = _res.Signature;
         _storedBefore = _st.Stored;
         _storeBefore = _st;   // its pocket = the "before" side of the uuid diff (Plugin.StoredMarks.cs)
         _services.Log.Info($"[AutoManifest] store → pull={p.Pull + 1} row={p.Row + 1} (idx {p.Pull},{p.Row}) entry={p.EntryId} "
                            + $"{EntryText(p.EntryId)} for target #{p.TargetIndex + 1} pocket={_st.Stored}/{_st.StoreLimit}"
                            + (p.Upgrade ? $" · better roll (was entry={_planWasEntry} {EntryText(_planWasEntry)} "
-                                          + $"uuid={_targets[p.TargetIndex].Best?.Uuid ?? 0}, copies={_targets[p.TargetIndex].Copies.Count})"
-                                        : string.Empty));
+                                          + $"uuid={_targets[p.TargetIndex].Best?.Uuid ?? 0}, copies={_targets[p.TargetIndex].Copies.Count}"
+                                          + $" active={_targets[p.TargetIndex].ActiveCount} cap={KeepCopies})"
+                                        : string.Empty)
+                           + (_swapVictim != null ? $" · at cap: swaps out uuid={_swapVictim.Uuid} entry={_swapVictim.Entry} "
+                                                    + $"{EntryText(_swapVictim.Entry)}" : string.Empty));
         if (!StartStore(p.Pull, p.Row)) { End(EndReason.LeftWorld); return; }
         Enter(RunPhase.Storing);
     }
@@ -271,6 +281,7 @@ public sealed partial class Plugin
         if (ret == StorageFullCode) { End(EndReason.PocketFull); return; }
         if (ret != 0) { End(EndReason.StoreRefused); return; }
         MarkStored(_plan.TargetIndex, _plan.EntryId, _storeBefore);
+        if (_swapVictim != null) NoteSwapCopy();   // the copy whose uuid must be confirmed before the swap's discard
         if (_plan.Upgrade) _runBetter++;
         Enter(RunPhase.AwaitStore);
         AwaitStoreSync(now);
@@ -293,17 +304,19 @@ public sealed partial class Plugin
         }
         _st = st;
         RefreshMaterialsFromState();
-        if (_plan.Upgrade) SetFooter(FooterEvent.Better, _plan.EntryId, _planWasEntry);
-        else SetFooter(FooterEvent.Stored, _plan.EntryId);
         _services.Log.Info($"[AutoManifest] stored entry={_plan.EntryId}: pocket {_storedBefore} → {st.Stored}/{st.StoreLimit} "
                            + $"(results sig changed={_res.Signature != _sigBefore}); results now: {DescribeResults(_res)}");
+        // A swap at the cap (spec ⑫): confirm the new copy's uuid, THEN discard the old one (Plugin.Run.Replace.cs).
+        if (_swapVictim != null) { Enter(RunPhase.AwaitMark); AwaitSwapMark(now); return; }
+        if (_plan.Upgrade) SetFooter(FooterEvent.Better, _plan.EntryId, _planWasEntry);
+        else SetFooter(FooterEvent.Stored, _plan.EntryId);
         Enter(RunPhase.Matching);
         Match(now);
     }
 
     // ── end ───────────────────────────────────────────────────────────────────────────────────────────────────────
     private EndReason _endReason;
-    private int _endPulls, _endStored, _endLimit, _endWaiting, _endBetter;
+    private int _endPulls, _endStored, _endLimit, _endWaiting, _endBetter, _endDiscarded;
     private long _endSpent;
 
     private void End(EndReason reason)
@@ -314,11 +327,12 @@ public sealed partial class Plugin
         _endReason = reason;
         _endPulls = _runPulls; _endSpent = _runSpent;
         _endStored = _st.Stored; _endLimit = _st.StoreLimit; _endWaiting = WaitingCount();
-        _endBetter = _runBetter;
+        _endBetter = _runBetter; _endDiscarded = _runDiscarded;
+        _swapVictim = null;
         CaptureEndReach();
         _endComposed.Invalidate();
         _services.Log.Info($"[AutoManifest] run end: {reason} pulls={_runPulls} spent={_runSpent} pocket={_st.Stored}/{_st.StoreLimit} "
-                           + $"waiting={_endWaiting} better={_runBetter} targets={DescribeTargets()}");
+                           + $"waiting={_endWaiting} better={_runBetter} discarded={_runDiscarded} targets={DescribeTargets()}");
         MarkMain();
     }
 }

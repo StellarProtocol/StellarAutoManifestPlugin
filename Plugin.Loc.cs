@@ -100,6 +100,15 @@ public sealed partial class Plugin
     private const string KeyConfirmBetter    = "am.confirm.keepBetter";
     private const string KeyEndBetterOne     = "am.end.betterOne";
     private const string KeyEndBetterMany    = "am.end.betterMany";
+    // Keep better rolls: cap + replace (spec ⑫, Plugin.Run.Replace.cs)
+    private const string KeyKeepBest          = "am.run.keepBest";
+    private const string KeyKeepUpTo          = "am.run.keepUpTo";
+    private const string KeyKeepNoCap         = "am.run.keepNoCap";
+    private const string KeyLogSwapped        = "am.footer.betterSwapped";
+    private const string KeyConfirmBetterBest = "am.confirm.keepBetterBest";
+    private const string KeyConfirmBetterCap  = "am.confirm.keepBetterCap";
+    private const string KeyEndDiscarded      = "am.end.discarded";
+    private const string KeyEndDiscardFailed  = "am.end.discardFailed";
     // Typed spend limit, 0 = no limit (spec ⑪, Plugin.SpendInput.cs)
     private const string KeySpendNoLimit       = "am.run.spendNoLimit";
     private const string KeyStatusRunningFree  = "am.status.runningNoLimit";

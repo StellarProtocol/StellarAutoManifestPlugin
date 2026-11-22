@@ -33,7 +33,7 @@ public sealed partial class Plugin
     }
 
     // ── footer log line (running) / last run (idle, before any run) ───────────────────────────────────────────────
-    private enum FooterEvent : byte { None, Starting, Stopping, Pull, Stored, LevelUp, Better, Skipped }
+    private enum FooterEvent : byte { None, Starting, Stopping, Pull, Stored, LevelUp, Better, Skipped, Swapped }
 
     private FooterEvent _fbEvent;
     private int _fbPull, _fbEntry, _fbExtra, _fbStored, _fbLimit, _fbVer, _fbBuiltVer = -1, _fbBuiltGen = -1;
@@ -43,7 +43,8 @@ public sealed partial class Plugin
     private float _fbHoldUntil;
     private const float LevelUpHoldS = 4f;   // the level-up / skipped line outlives the next pull lines
 
-    // `extra`: Better = the entryId of the copy it beats ("was 2.72%"); Skipped = the Group of the waiting row the slot is
+    // `extra`: Better = the entryId of the copy it beats ("was 2.72%"); Swapped = the entryId of the copy discarded for
+    // it ("discarded 2.72%", spec ⑫); Skipped = the Group of the waiting row the slot is
     // kept for. Ids, not text, so a language switch re-words the line.
     private void SetFooter(FooterEvent ev, int entryId = 0, int extra = 0)
     {
@@ -69,7 +70,9 @@ public sealed partial class Plugin
             FooterEvent.Stored   => _loc.TFormat(KeyLogStored, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), _fbStored, _fbLimit),
             FooterEvent.Better   => _loc.TFormat(KeyLogBetter, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), ValueOf(_fbExtra),
                                                  _fbStored, _fbLimit),
-            FooterEvent.Skipped  => _loc.TFormat(KeyLogSkipped, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), NameOfGroup(_fbExtra)),
+            FooterEvent.Swapped  => _loc.TFormat(KeyLogSwapped, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), ValueOf(_fbExtra),
+                                                 _fbStored, _fbLimit),
+            FooterEvent.Skipped => _loc.TFormat(KeyLogSkipped, _fbPull, EntryName(_fbEntry), ValueOf(_fbEntry), NameOfGroup(_fbExtra)),
             FooterEvent.LevelUp  => _fbNames.Length > 0 ? _loc.TFormat(KeyLogLevelUpReach, _fbFrom, _fbTo, _fbNames)
                                                     : _loc.TFormat(KeyLogLevelUp, _fbFrom, _fbTo),
             _                    => _loc.T(KeyLogStarting),
@@ -97,7 +100,7 @@ public sealed partial class Plugin
 
     private string EndLineText() => _endComposed.Get(_langGen);
 
-    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix() + EndBetterSuffix();
+    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix() + EndBetterSuffix() + EndDiscardSuffix();
 
     // " · 1 better roll kept" / " · 3 better rolls kept" (spec ⑦), only when the run stored at least one.
     private string EndBetterSuffix() => _endBetter switch
@@ -121,6 +124,7 @@ public sealed partial class Plugin
         EndReason.Timeout      => _loc.T(KeyEndTimeout),
         EndReason.UserStop     => _loc.TFormat(KeyEndUserStop, _endPulls, N0(_endSpent)),
         EndReason.LeftWorld    => _loc.T(KeyEndLeftWorld),
+        EndReason.DiscardFailed => EndDiscardFailedText(),   // spec ⑫ (Plugin.Run.Replace.cs)
         _                      => string.Empty,
     };
 
@@ -129,7 +133,7 @@ public sealed partial class Plugin
     private EndKind CurrentEndKind() => _endReason switch
     {
         EndReason.AllStored => EndKind.Done,
-        EndReason.Refused or EndReason.StoreRefused or EndReason.Timeout => EndKind.Error,
+        EndReason.Refused or EndReason.StoreRefused or EndReason.Timeout or EndReason.DiscardFailed => EndKind.Error,
         _ => EndKind.Stopped,
     };
 

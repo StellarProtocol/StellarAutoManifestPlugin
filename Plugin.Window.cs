@@ -10,7 +10,7 @@ namespace Stellar.AutoManifest;
 /// Top → bottom:
 ///   ToolHeader [40 px accent tile | bold title / ONE live status line / thin spent-vs-limit bar while running]
 ///   TARGETS    hint "stops when all are stored" · 7 reserved rows, scrolling past 7 · "+ Add target"
-///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Keep better rolls On/Off
+///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Keep better rolls cap dropdown
 ///              (+ muted sub-line) · spend limit (typed, 0 = no limit) · keep free
 ///   MATERIALS  hint "live" · Remnant / Dawn Prism counts
 ///   footer     Start (Primary, 120) or Stop (Danger, 120) + one line: last run / run log / end line with badge
@@ -30,6 +30,9 @@ public sealed partial class Plugin
     private const float MaterialRowH = 22f;
     private const float StartPillW  = 120f;   // Start and Stop share it (approved)
     private const float RunDropdownW = 110f;
+    // "Keep better rolls" cap pill (spec ⑫ says ~104). Wider: its trigger shows the picked caption (bold 13), and at 104
+    // the 80 px caption room ellipsized even "Best only (swap)" (~100 px) and "No cap (never discard)" (~150 px).
+    private const float KeepCopiesDropdownW = 176f;
     private const float PullChipW   = 76f;
     private const float EndBadgeW   = 76f;
 
@@ -108,11 +111,12 @@ public sealed partial class Plugin
             ChoiceChip(() => _loc.T(KeyPull10), () => _pullTen, () => SetPullTen(true), PullChipW, PanelColor, () => Running),
         }, Gap: 4f)),
         SettingRow(BlessingLabel, OnOffChip(() => _useBlessing, SetUseBlessing, () => !_st.BlessAllowed)),
-        // spec ⑦: one row with a muted sub-line; the setter ignores clicks while a run is going (like Blessing).
+        // spec ⑫ (was ⑦'s On/Off chip): one row with a muted sub-line + the copy-cap pill dropdown; the setter ignores
+        // picks while a run is going (like Blessing).
         SettingRowSub(() => _loc.T(KeyKeepBetter), () => _loc.T(KeyKeepBetterHint),
-            OnOffChip(() => _keepBetter, SetKeepBetter, () => false)),
+            RunDropdown(() => _keepCopiesIndex, KeepCopiesOptions, SetKeepCopiesIndex, KeepCopiesDropdownW)),
         SettingRow(() => _loc.T(KeySpend), SpendControl()),   // typed number, 0 = no limit (spec ⑪, Plugin.SpendInput.cs)
-        SettingRow(() => _loc.T(KeyKeepFree), RunDropdown(() => _keepFreeIndex, KeepFreeOptions, SetKeepFreeIndex)),
+        SettingRow(() => _loc.T(KeyKeepFree), RunDropdown(() => _keepFreeIndex, () => KeepFreeOptions, SetKeepFreeIndex)),
     });
 
     private HudElement SettingRow(Func<string> label, HudElement control) => FixedLine(SettingRowH, new RowElement(new HudElement[]
@@ -140,9 +144,10 @@ public sealed partial class Plugin
             control,
         }, Gap: 8f));
 
-    private static HudElement RunDropdown(Func<int> selected, string[] options, Action<int> onSelect)
-        => new CellElement(new DropdownElement(selected, () => options, onSelect, Width: RunDropdownW)
-            { Style = DropdownStyle.Pill, CornerRadius = 13f, MaxVisibleRows = 8 }, Width: RunDropdownW);
+    // `options` is polled: the Keep-better captions are localized (cached per language, Plugin.Run.Replace.cs).
+    private static HudElement RunDropdown(Func<int> selected, Func<string[]> options, Action<int> onSelect, float width = RunDropdownW)
+        => new CellElement(new DropdownElement(selected, options, onSelect, Width: width)
+            { Style = DropdownStyle.Pill, CornerRadius = 13f, MaxVisibleRows = 8 }, Width: width);
 
     // "each pull = 12 Remnants at Lv.2" — rebuilt only when the cost, the level or the language moves.
     private int _runHintCost = -1, _runHintLevel = -1, _runHintGen = -1;

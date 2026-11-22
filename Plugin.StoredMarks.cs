@@ -12,7 +12,8 @@ namespace Stellar.AutoManifest;
 /// (<c>seasonTalentReforgeMap[sid].storeEntries</c>, map of {uuid, entryId}) from just before the store against the first
 /// state read after it: the one new uuid holding the stored entryId.</para>
 /// <para>A row keeps a COPY per store (<see cref="MarkCopy"/>): "Keep better rolls" (spec ⑦) stores a higher value for
-/// a row that already has one and never removes the old copy, so the mark must follow every copy. The badge shows the
+/// a row that already has one (with a copy cap, spec ⑫, the run then discards that row's lowest copy — Plugin.Run.Replace.cs
+/// — and drops it from the mark), so the mark must follow every copy. The badge shows the
 /// best copy still in the pocket; removing it falls back to the next; none left → the row is waiting again.</para>
 /// <para>On every state read (≤ 1 Hz idle, per run step) the copies are checked against the CURRENT pocket, and only
 /// when the pocket text, character or season moved (one string compare otherwise, no allocation —
