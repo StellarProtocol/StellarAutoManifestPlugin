@@ -26,7 +26,7 @@ public sealed partial class Plugin
     private readonly List<Target> _targets = new();
     private bool _pullTen = true;     // approved default: 10-pull
     private bool _useBlessing = true; // approved default: On
-    private bool _keepBetter;         // "Keep better rolls" (spec ⑦), approved default: Off
+    private bool _keepBetter = true;  // "Keep better rolls" (spec ⑦), default On (user 2026-11-22, was Off)
     private int _spendIndex = DefaultSpendIndex;
     private int _keepFreeIndex;
 
@@ -39,7 +39,7 @@ public sealed partial class Plugin
         _cfg = _services.Config.GetSection("automanifest");
         _pullTen       = _cfg.Get("pullTen", true);
         _useBlessing   = _cfg.Get("useBlessing", true);
-        _keepBetter    = _cfg.Get("keepBetter", false);
+        _keepBetter    = _cfg.Get("keepBetter", true);    // a saved value wins; unset = the new default On
         _spendIndex    = Array.IndexOf(SpendChoices, _cfg.Get("spendLimit", SpendChoices[DefaultSpendIndex]));
         if (_spendIndex < 0) _spendIndex = DefaultSpendIndex;   // a value no longer offered → the default
         _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
