@@ -5,18 +5,23 @@ using Stellar.Abstractions.Services;
 namespace Stellar.AutoManifest;
 
 /// <summary>
-/// The picker's imprint list (a <see cref="VirtualListElement"/> over the filtered imprints: 26 px tiles + 2 px gap =
-/// 28 pitch, 6 rows visible) and its MINIMUM VALUE step chips (one per rollable step, coloured by quality, the selected
-/// one ringed in the accent). The list row reads "Name · category" with the category muted (rich-text colour span,
-/// rebuilt per slot only when the imprint, the language or the muted colour changes) and the full range right-aligned.
+/// The picker's imprint list (a <see cref="VirtualListElement"/> over the filtered imprints, 26 px rows, 6 visible) and
+/// its MINIMUM VALUE step chips (one per rollable step, coloured by quality, the selected one ringed in the accent). The
+/// list sits in ONE recessed dark well (spec ⑩, option A) with FLAT rows: no per-row tile, a faint hover wash, the
+/// selected row ringed in the accent. The list row reads "Name · category" with the category muted (rich-text colour
+/// span, rebuilt per slot only when the imprint, the language or the muted colour changes) and the full range right-aligned.
 /// </summary>
 public sealed partial class Plugin
 {
     private const int   PickerPool     = 9;
-    private const float PickerTileH    = 26f;
-    private const float PickerPitch    = 28f;
+    private const float PickerRowH     = 26f;
+    // spec ⑩: the rows are flat now, so the 2 px gap between tiles (28 pitch) is gone — its 12 px over 6 rows pays for
+    // the well's inner padding, and the picker keeps its height (old list 6 × 28 − 2 = 166 = 156 + 2 × 5).
+    private const float PickerPitch    = PickerRowH;
     // 6 rows again (spec ⑧): cut to 4 when the odds panel (spec ⑥) arrived, restored once the user allowed more height.
-    private const float PickerListH    = 6 * PickerPitch - 2f;   // 166
+    private const float PickerListH    = 6 * PickerPitch;        // 156
+    private const float PickerWellPadX = 6f;
+    private const float PickerWellPadY = 5f;                     // 156 + 10 = 166, the pre-⑩ list height
     private const float PickerRangeW   = 120f;
     private const int   MaxStepChips   = 11;
     private const float StepChipW      = 48f;                    // 11 × 48 + 10 × 2 = 548 (content 556)
@@ -38,13 +43,17 @@ public sealed partial class Plugin
     {
         var pool = new HudElement[PickerPool];
         for (int i = 0; i < PickerPool; i++) pool[i] = BuildPickerRow(i);
-        return new ConditionalElement(() => _pickFiltered.Count > 0,
+        // The well wraps both branches, so the empty / loading line sits in the same dark panel at the same height.
+        return new BubbleElement(new ConditionalElement(() => _pickFiltered.Count > 0,
             new VirtualListElement(PickerCount, PickerPitch, pool, first => _pickOffset = first, Height: PickerListH)
             {
                 ResetScroll = () => { if (!_pickResetScroll) return false; _pickResetScroll = false; return true; },
             },
             FixedLine(PickerListH, new TextElement(() => _loc.T(_catalogReady ? KeyPickerEmpty : KeyPickerLoading),
-                Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true) { Ellipsize = true }));
+                Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true) { Ellipsize = true })))
+        {
+            FillColorFn = () => Fade(WellShade), CornerRadius = TileRadius, PaddingX = PickerWellPadX, PaddingY = PickerWellPadY,
+        };
     }
 
     // Per-slot composed line: "Name <color=#muted>· Category</color>".
@@ -88,10 +97,11 @@ public sealed partial class Plugin
     private HudElement BuildPickerRow(int slot)
     {
         bool Selected() => PickAt(slot) is { } imp && ReferenceEquals(imp, _pickSelected);
-        ColorRgba Fill() => _pickRowHover[slot] ? RowHoverColor(TileColor()) : TileColor();
-        var tile = new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
+        // Flat row (spec ⑩): transparent at rest, a faint MenuText wash over the well on hover (the same 5% as RowHoverColor).
+        ColorRgba Fill() => _pickRowHover[slot] ? Menu.MenuText with { A = RowHoverMix } : Transparent;
+        var row = new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
             {
-                new SpacerElement(0f, PickerTileH),
+                new SpacerElement(0f, PickerRowH),
                 new CellElement(NameLine(() => PickerLine(slot), TextColor), Weight: 1f),
                 new TextElement(() => PickAt(slot)?.RangeText ?? string.Empty, Color: () => MutedColor(), Width: PickerRangeW,
                     Align: TextAlign.Right, NoWrap: true, FontSize: 12) { RichEmoji = true, Ellipsize = true },
@@ -103,8 +113,7 @@ public sealed partial class Plugin
             OutlineColorFn = () => Selected() ? Fade(AccentColor()) : Transparent, OutlineWidth = 2f,
             CornerRadius = TileRadius, PaddingX = 8f, PaddingY = 0f,
         };
-        // R15: the VirtualList slot stretches its child, so the 2 px gap is a spacer inside the slot.
-        return new ColumnElement(new HudElement[] { tile, new SpacerElement(0f, PickerPitch - PickerTileH) }, Gap: 0.01f);
+        return row;   // pitch = row height: no gap spacer in the slot any more
     }
 
     // ── MINIMUM VALUE chips ───────────────────────────────────────────────────────────────────────────────────────

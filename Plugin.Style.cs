@@ -93,6 +93,9 @@ public sealed partial class Plugin
     // same size and radius. The fill is drawn translucent (it fades with the window by itself); the pre-blended
     // Over(shade, surface) is used ONLY for the label contrast.
     private static readonly ColorRgba DisabledShade = new(0f, 0f, 0f, 0.28f);
+    // A recessed WELL (the picker's imprint list, spec ⑩): the same sunken black @28 %, drawn translucent over the window,
+    // so it reads one step darker than the odds panel (black @20 %) and in the family of the dark search box.
+    private static readonly ColorRgba WellShade = DisabledShade;
     private const float DisabledLabelAlpha = 0.32f;
     private const float DisabledLabelMinContrast = 2.0f;
 
