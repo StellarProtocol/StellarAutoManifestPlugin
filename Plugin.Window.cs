@@ -1,0 +1,232 @@
+using System;
+using Stellar.Abstractions.Domain;
+using Stellar.Abstractions.Plugins;
+using Stellar.Abstractions.Services;
+
+namespace Stellar.AutoManifest;
+
+/// <summary>
+/// The Auto Manifestation window, house style (approved prototype 2026-11-21, <c>automanifest-APPROVED.md</c> ①/④).
+/// Top → bottom:
+///   ToolHeader [40 px accent tile | bold title / ONE live status line / thin spent-vs-limit bar while running]
+///   TARGETS    hint "stops when all are stored" · 7 reserved rows, scrolling past 7 · "+ Add target"
+///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Special item dropdown (+ muted
+///              sub-line, spec ⑬) · Keep better rolls cap dropdown (+ muted sub-line) · spend limit (typed, 0 = no limit) · keep free
+///   MATERIALS  hint "live" · Remnant / Dawn Prism counts · picked special item (reserved row when none)
+///   footer     Start (Primary, 120) or Stop (Danger, 120) + one line: last run / run log / end line with badge
+/// Everything below the header sits in a <see cref="ConfirmHostElement"/>, so the Start confirm (③) locks it modally.
+/// Every line is pinned (struts, fixed cells), so the window keeps ONE height in every state. The Funcs only read
+/// cached fields; game reads happen on the 10 Hz tick (Plugin.cs).
+/// </summary>
+public sealed partial class Plugin
+{
+    private const float WindowWidth = 512f;   // approved ~452 + 60 (spec ⑧); content = 512 − 2 × 12 GlassMenu padding = 488
+    private const float StatusLineH = 16f;
+    private const float ProgressH   = 4f;
+    private const float SettingRowH = 28f;
+    private const float SettingRowSubH = 34f;   // "Keep better rolls" row: label + muted sub-line (18 + 15 + 1 slack)
+    private const float SubLabelH   = 18f;   // its 14 px label line, pinned (TextElement.Height)
+    private const float SubLineH    = 15f;   // its 11 px sub-line, pinned
+    private const float MaterialRowH = 22f;
+    private const float StartPillW  = 120f;   // Start and Stop share it (approved)
+    private const float RunDropdownW = 110f;
+    // "Keep better rolls" cap pill (spec ⑫ says ~104). Wider: its trigger shows the picked caption (bold 13), and at 104
+    // the 80 px caption room ellipsized even "Best only (swap)" (~100 px) and "No cap (never discard)" (~150 px).
+    private const float KeepCopiesDropdownW = 176f;
+    private const float PullChipW   = 76f;
+    private const float EndBadgeW   = 76f;
+
+    private IWindowControl RegisterMain() => _services.Windows.Register(new WindowRegistration(
+        new WindowSpec(
+            Id:          MainWindowId,
+            Title:       _loc.T(KeyTitle),
+            DefaultRect: new WindowRect(20f, 120f, WindowWidth, 0f),   // 0 height = content-sized (content never changes height)
+            Category:    WindowCategory.Tools,
+            Style:       WindowPanelStyle.GlassMenu)
+        {
+            StartVisible = false, Closable = true, Draggable = true,
+            Anchor = WindowAnchor.TopRight,
+            TitleProvider = () => _loc.T(KeyTitle),
+            // Built while hidden so the first open doesn't pay for the row pool (Plugin-Performance-Rules §5). Every Func
+            // is safe without game state (cached fields only) and the target list reports 0 rows while hidden.
+            Prebuild = true,
+            ShouldRender = () => _services.ClientState.Phase == GamePhase.World
+                                 && (_services.ClientState.UiState & GameUIState.Loading) == 0,
+        },
+        BuildMainRoot(),
+        OnClose: CloseMain));
+
+    private HudElement BuildMainRoot() => new ColumnElement(new HudElement[]
+    {
+        BuildHeader(),
+        new ConfirmHostElement(new ColumnElement(new HudElement[]
+        {
+            BuildTargetsPanel(),
+            BuildRunPanel(),
+            BuildMaterialsPanel(),
+            BuildFooter(),
+        }, Gap: 8f), _confirm) { ConfirmLabelWidth = 96f },
+    }, Gap: 8f);
+
+    // ── header ────────────────────────────────────────────────────────────────────────────────────────────────────
+    private readonly ContrastCache _statusInk = new();
+
+    private HudElement BuildHeader() => new RowElement(new HudElement[]
+    {
+        IconBox(() => HeaderIconPng(ToolGlyphSize), ToolIconSize, ToolGlyphSize),
+        new CellElement(new ColumnElement(new HudElement[]
+        {
+            new TextElement(() => _loc.T(KeyTitle), Color: () => TextColor(), Emphasis: true, NoWrap: true) { Ellipsize = true },
+            FixedLine(StatusLineH, SmallText(StatusText, StatusColor)),
+            // The bar's slot is always there (a strut when idle), so starting a run never moves anything.
+            FixedLine(ProgressH, new ConditionalElement(() => Running, ProgressBar(), new SpacerElement(0f, ProgressH))),
+        }, Gap: 2f), Weight: 1f),
+    }, Gap: 10f);
+
+    // Running = accent (readable on the window background); idle = muted.
+    private ColorRgba StatusColor() => Running ? _statusInk.Get(AccentColor(), WindowBg(), PillMinContrast) : MutedColor();
+
+    private HudElement ProgressBar() => new BarElement(Progress, new ColorRgba(1f, 1f, 1f))
+    {
+        Style = BarStyle.Modern, Height = ProgressH, FillWidth = true,
+        CornerRadius = 1f,   // ≤ (4 − 2) / 2: a larger radius would grow the 4 px bar (sliced min size 2r + 2)
+        FillColorFn  = () => Fade(AccentColor()),
+        TrackColorFn = () => Fade(Over(TextColor() with { A = 0.10f }, WindowBg())),
+    };
+
+    // Spent / limit — or, with no limit (spec ⑪), spent / Remnants owned at Start — quantized to ~1 px of a 300 px bar so
+    // it re-meshes only when it visibly moves (§5).
+    private float Progress()
+    {
+        long of = SpendLimit > 0 ? SpendLimit : _runStartRemnants;
+        return of <= 0 ? 0f : MathF.Round(Math.Clamp(_runSpent / (float)of, 0f, 1f) * 300f) / 300f;
+    }
+
+    // ── RUN ───────────────────────────────────────────────────────────────────────────────────────────────────────
+    private HudElement BuildRunPanel() => SectionPanel(KeyRunCaption, RunHint, new[]
+    {
+        SettingRow(() => _loc.T(KeyPullSize), new RowElement(new HudElement[]
+        {
+            ChoiceChip(() => _loc.T(KeyPull1), () => !_pullTen, () => SetPullTen(false), PullChipW, PanelColor, () => Running),
+            ChoiceChip(() => _loc.T(KeyPull10), () => _pullTen, () => SetPullTen(true), PullChipW, PanelColor, () => Running),
+        }, Gap: 4f)),
+        SettingRow(BlessingLabel, OnOffChip(() => _useBlessing, SetUseBlessing, () => !_st.BlessAllowed)),
+        // spec ⑬: special item pill dropdown (Plugin.Special.cs), recessed while a run is going.
+        SettingRowSub(() => _loc.T(KeySpecial), () => _loc.T(KeySpecialHint), SpecialControl()),
+        // spec ⑫ (was ⑦'s On/Off chip): one row with a muted sub-line + the copy-cap pill dropdown; the setter ignores
+        // picks while a run is going (like Blessing).
+        SettingRowSub(() => _loc.T(KeyKeepBetter), () => _loc.T(KeyKeepBetterHint),
+            RunDropdown(() => _keepCopiesIndex, KeepCopiesOptions, SetKeepCopiesIndex, KeepCopiesDropdownW)),
+        SettingRow(() => _loc.T(KeySpend), SpendControl()),   // typed number, 0 = no limit (spec ⑪, Plugin.SpendInput.cs)
+        SettingRow(() => _loc.T(KeyKeepFree), RunDropdown(() => _keepFreeIndex, () => KeepFreeOptions, SetKeepFreeIndex)),
+    });
+
+    private HudElement SettingRow(Func<string> label, HudElement control) => FixedLine(SettingRowH, new RowElement(new HudElement[]
+    {
+        new CellElement(new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
+        control,
+    }, Gap: 8f));
+
+    // A setting with a muted 11 px sub-line under its label: one left-aligned two-line block, vertically centred in the
+    // row with the chip (the row is an HLG → MiddleLeft). Both lines get a pinned TextElement.Height: unpinned, the TMP
+    // sub-line's line box measured far taller than 11 px and the label's ~20, so the column outgrew the FixedLine strut
+    // (a strut is only a MINIMUM) — the row swelled to ~52 px with the label high, the sub-line low and the chip between
+    // (in-game 2026-11-22). Pinned, the block is 33 px in the 34 px row, so the window keeps one height in every state.
+    // ⚠️ The Column's Gap must be 0.01, NOT 0: ColumnElement Gap 0 means the framework DEFAULT (SectionGap, 12 px), which
+    // still split the lines 12 px apart and grew the block to 45 px (bridge ui.inspect, 2026-11-22).
+    private HudElement SettingRowSub(Func<string> label, Func<string> sub, HudElement control) => FixedLine(SettingRowSubH,
+        new RowElement(new HudElement[]
+        {
+            new CellElement(new ColumnElement(new HudElement[]
+            {
+                new TextElement(label, Color: () => TextColor(), NoWrap: true) { Ellipsize = true, Height = SubLabelH },
+                new TextElement(sub, Color: () => MutedColor(), NoWrap: true, FontSize: 11)
+                    { RichEmoji = true, Ellipsize = true, Height = SubLineH },
+            }, Gap: 0.01f), Weight: 1f),
+            control,
+        }, Gap: 8f));
+
+    // `options` is polled: the Keep-better captions are localized (cached per language, Plugin.Run.Replace.cs).
+    private static HudElement RunDropdown(Func<int> selected, Func<string[]> options, Action<int> onSelect, float width = RunDropdownW)
+        => new CellElement(new DropdownElement(selected, options, onSelect, Width: width)
+            { Style = DropdownStyle.Pill, CornerRadius = 13f, MaxVisibleRows = 8 }, Width: width);
+
+    // "each pull = 12 Remnants at Lv.2" — rebuilt only when the cost, the level or the language moves.
+    private int _runHintCost = -1, _runHintLevel = -1, _runHintGen = -1;
+    private string _runHint = string.Empty;
+
+    private string RunHint()
+    {
+        if (!_st.Valid) return string.Empty;
+        if (_st.CostPerPull == _runHintCost && _st.Level == _runHintLevel && _langGen == _runHintGen) return _runHint;
+        _runHintCost = _st.CostPerPull; _runHintLevel = _st.Level; _runHintGen = _langGen;
+        return _runHint = _loc.TFormat(KeyRunHint, _st.CostPerPull, _st.Level);
+    }
+
+    // "Use Blessing (Dawn Prism · 64 owned)" — the material name from the game, rebuilt when the count moves.
+    private long _blessLabelCount = -1;
+    private int _blessLabelGen = -1;
+    private string _blessLabelName = string.Empty, _blessLabel = string.Empty;
+
+    private string BlessingLabel()
+    {
+        var name = PrismName();
+        if (_st.Prisms == _blessLabelCount && _langGen == _blessLabelGen && ReferenceEquals(name, _blessLabelName)) return _blessLabel;
+        _blessLabelCount = _st.Prisms; _blessLabelGen = _langGen; _blessLabelName = name;
+        return _blessLabel = _loc.TFormat(KeyBlessing, name, N0(_st.Prisms));
+    }
+
+    // ── MATERIALS ─────────────────────────────────────────────────────────────────────────────────────────────────
+    private HudElement BuildMaterialsPanel() => SectionPanel(KeyMatCaption, () => _loc.T(KeyMatHint), new[]
+    {
+        MaterialRow(RemnantName, () => _matRemnantText.Get(_st.Valid ? _st.Remnants : -1)),
+        MaterialRow(PrismName, () => _matPrismText.Get(_st.Valid ? _st.Prisms : -1)),
+        SpecialMaterialRow(),   // the picked special item (spec ⑬); a reserved empty row without one
+    });
+
+    private readonly CountText _matRemnantText = new(), _matPrismText = new();
+
+    // A number shown as "1,234", re-formatted only when it changes ("—" while unknown).
+    private sealed class CountText
+    {
+        private long _v = long.MinValue;
+        private string _s = "—";
+
+        public string Get(long v)
+        {
+            if (v == _v) return _s;
+            _v = v;
+            return _s = v < 0 ? "—" : N0(v);
+        }
+    }
+
+    private HudElement MaterialRow(Func<string> name, Func<string> count) => FixedLine(MaterialRowH, new RowElement(new HudElement[]
+    {
+        new CellElement(new TextElement(name, Color: () => TextColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
+        new TextElement(count, Color: () => TextColor(), Width: 96f, Align: TextAlign.Right, NoWrap: true, FontSize: 14) { Bold = true },
+    }, Gap: 8f));
+
+    // ── footer ────────────────────────────────────────────────────────────────────────────────────────────────────
+    private HudElement BuildFooter() => FixedLine(PillH, new RowElement(new HudElement[]
+    {
+        new CellElement(new ConditionalElement(() => Running,
+            PillButton(() => _loc.T(KeyStop), PillKind.Danger, OnStopClicked, StartPillW, WindowBg, () => !_stopRequested),
+            PillButton(() => _loc.T(KeyStart), PillKind.Primary, OnStartClicked, StartPillW, WindowBg, CanStart)),
+            Width: StartPillW),
+        // Start gated by reachability (spec ⑥) → the amber reason wins the line. 11 px and WRAPPING (no NoWrap / Width):
+        // the sentence needs two lines in the 358 px cell, which fit the 28 px footer.
+        new CellElement(new ConditionalElement(() => !Running && ReachBlocksStart(),
+            new TextElement(GateText, Color: () => GateColor(), FontSize: 11) { RichEmoji = true },
+            // spec ⑬: "<item> only rolls <Category> imprints. N targets can't roll with it." (amber, same look as the gate);
+            // it yields to the last run's end line until the item or the targets change.
+            new ConditionalElement(SpecialHintShown,
+                new TextElement(SpecialHintText, Color: () => GateColor(), FontSize: 11) { RichEmoji = true },
+                new ConditionalElement(() => !Running && _endReason != EndReason.None,
+                    new RowElement(new HudElement[]
+                    {
+                        Badge(EndBadgeText, EndBadgeColor, WindowBg, EndBadgeW),
+                        new CellElement(SmallText(EndLineText, MutedColor), Weight: 1f),
+                    }, Gap: 6f),
+                    SmallText(FooterText, FooterColor)))), Weight: 1f),
+    }, Gap: 10f));
+}
