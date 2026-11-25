@@ -100,7 +100,7 @@ public sealed partial class Plugin
 
     private string EndLineText() => _endComposed.Get(_langGen);
 
-    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix() + EndBetterSuffix() + EndDiscardSuffix();
+    private string ComposeEndLine() => ComposeEndReason() + EndReachSuffix() + EndBetterSuffix() + EndDiscardSuffix() + EndSpecialSuffix();
 
     // " · 1 better roll kept" / " · 3 better rolls kept" (spec ⑦), only when the run stored at least one.
     private string EndBetterSuffix() => _endBetter switch
@@ -125,6 +125,8 @@ public sealed partial class Plugin
         EndReason.UserStop     => _loc.TFormat(KeyEndUserStop, _endPulls, N0(_endSpent)),
         EndReason.LeftWorld    => _loc.T(KeyEndLeftWorld),
         EndReason.DiscardFailed => EndDiscardFailedText(),   // spec ⑫ (Plugin.Run.Replace.cs)
+        EndReason.NoSpecial      => EndNoSpecialText(),       // spec ⑬ (Plugin.Special.cs)
+        EndReason.SpecialBlocked => EndSpecialBlockedText(),
         _                      => string.Empty,
     };
 

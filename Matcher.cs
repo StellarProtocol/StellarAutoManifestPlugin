@@ -86,6 +86,25 @@ internal sealed class ReforgeState
     public bool HasPocket;                    // the pocket list below was read (script v4+)
     public string PocketSrc = string.Empty;   // raw "uuid:entryId,…" — reused arrays when unchanged
     public int[] PocketUuid = Array.Empty<int>(), PocketEntry = Array.Empty<int>();   // stored entries (entryId ≠ 0)
+    // Special items (spec ⑬, script v7+): raw "id:owned:unlocked,…" — the SAME string instance while unchanged, so
+    // caches can key on the reference — and the parsed arrays (reused with it).
+    public string SpecialSrc = string.Empty;
+    public int[] SpecialId = Array.Empty<int>();
+    public long[] SpecialOwned = Array.Empty<long>();
+    public bool[] SpecialUnlocked = Array.Empty<bool>();
+
+    public long SpecialCount(int id)
+    {
+        for (int i = 0; i < SpecialId.Length; i++) if (SpecialId[i] == id) return SpecialOwned[i];
+        return 0;
+    }
+
+    // The game's own "available" rule (getAvailableSelectedMaterial): owned > 0 AND the row's Condition passes.
+    public bool SpecialUsable(int id)
+    {
+        for (int i = 0; i < SpecialId.Length; i++) if (SpecialId[i] == id) return SpecialOwned[i] > 0 && SpecialUnlocked[i];
+        return false;
+    }
 
     public bool PocketHolds(int uuid, int entryId)
     {
@@ -129,6 +148,15 @@ internal sealed class ReforgeState
             }
             else ParsePocket(st, f[16]);
         }
+        if (f.Length >= 19)
+        {
+            if (prev != null && prev.SpecialSrc == f[17])
+            {
+                st.SpecialSrc = prev.SpecialSrc; st.SpecialId = prev.SpecialId;
+                st.SpecialOwned = prev.SpecialOwned; st.SpecialUnlocked = prev.SpecialUnlocked;
+            }
+            else ParseSpecials(st, f[17]);
+        }
         st.Valid = true;
         return st;
     }
@@ -145,6 +173,21 @@ internal sealed class ReforgeState
             if (c <= 0) continue;
             st.PocketUuid[i] = I(parts[i].Substring(0, c));
             st.PocketEntry[i] = I(parts[i].Substring(c + 1));
+        }
+    }
+
+    private static void ParseSpecials(ReforgeState st, string src)
+    {
+        st.SpecialSrc = src;
+        var parts = src.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        st.SpecialId = new int[parts.Length];
+        st.SpecialOwned = new long[parts.Length];
+        st.SpecialUnlocked = new bool[parts.Length];
+        for (int i = 0; i < parts.Length; i++)
+        {
+            var v = parts[i].Split(':');
+            if (v.Length < 3) continue;
+            st.SpecialId[i] = I(v[0]); st.SpecialOwned[i] = L(v[1]); st.SpecialUnlocked[i] = v[2] == "1";
         }
     }
 

@@ -129,6 +129,25 @@ public sealed partial class Plugin
     private const string KeyDiscardWaiting     = "am.pocket.discardWaiting";
     private const string KeyDiscardNext        = "am.pocket.discardNext";
     private const string KeyDiscard            = "am.pocket.discard";
+    // Special item slot (spec ⑬, Plugin.Special.cs)
+    private const string KeySpecial                = "am.run.special";
+    private const string KeySpecialHint            = "am.run.specialHint";
+    private const string KeySpecialNone            = "am.run.specialNone";
+    private const string KeySpecialOption          = "am.run.specialOption";
+    private const string KeyNotWithItem            = "am.targets.notWithItem";
+    private const string KeySpecialHintOne         = "am.special.hintOne";
+    private const string KeySpecialHintMany        = "am.special.hintMany";
+    private const string KeyConfirmSpecial1        = "am.confirm.special1";
+    private const string KeyConfirmSpecial10       = "am.confirm.special10";
+    private const string KeyConfirmSpecialBlocked  = "am.confirm.specialBlocked";
+    private const string KeyEndNoSpecial1          = "am.end.noSpecial1";
+    private const string KeyEndNoSpecial10         = "am.end.noSpecial10";
+    private const string KeyEndWaitingOne          = "am.end.waitingOne";
+    private const string KeyEndWaitingMany         = "am.end.waitingMany";
+    private const string KeyEndSpent               = "am.end.spent";
+    private const string KeyEndSpecialBlockedOne   = "am.end.specialBlockedOne";
+    private const string KeyEndSpecialBlockedMany  = "am.end.specialBlockedMany";
+    private const string KeyEndSpecialUsed         = "am.end.specialUsed";
 
     // Category chips, in picker order; the game's own Lang('SeasonTalentAttrLibName_<id>') wins when it exists.
     private static readonly int[] CategoryLibIds = { 1001, 101, 102, 103, 104, 105 };

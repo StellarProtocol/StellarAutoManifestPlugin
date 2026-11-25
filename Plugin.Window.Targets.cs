@@ -153,9 +153,12 @@ public sealed partial class Plugin
 
         var badge = new CellElement(new ConditionalElement(() => TargetAt(idx)?.Stored == true,
             Badge(() => StoredLabel(idx), SuccessColor, TileColor, TargetBadgeW),
-            new ConditionalElement(() => TargetNeed(idx) != 0,
-                Badge(() => NeedLabel(idx), CautionColor, TileColor, TargetBadgeW),   // "needs Lv 4" / "locked" (Plugin.Reach.cs)
-                Badge(() => _loc.T(KeyWaiting), MutedColor, TileColor, TargetBadgeW, muted: true))), Width: TargetBadgeW);
+            // "not with item" (spec ⑬): the picked category special item can't roll this row — wins over needs Lv / waiting
+            new ConditionalElement(() => TargetBlocked(idx),
+                Badge(() => _loc.T(KeyNotWithItem), CautionColor, TileColor, TargetBadgeW),
+                new ConditionalElement(() => TargetNeed(idx) != 0,
+                    Badge(() => NeedLabel(idx), CautionColor, TileColor, TargetBadgeW),   // "needs Lv 4" / "locked" (Plugin.Reach.cs)
+                    Badge(() => _loc.T(KeyWaiting), MutedColor, TileColor, TargetBadgeW, muted: true)))), Width: TargetBadgeW);
 
         var remove = CrossButton(() => _rowHover.Remove[idx], over => _rowHover.Remove[idx] = over,
             () => RemoveTarget(idx), TileColor, danger: true, enabled: () => !Running);

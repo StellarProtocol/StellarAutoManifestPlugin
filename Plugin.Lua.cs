@@ -19,6 +19,7 @@ public sealed partial class Plugin
     private const string CallResults = "pcall(function() rawget(_G,'__stam').results() end)";
     private const string CallRows    = "pcall(function() rawset(_G,'__stam_rows',nil) rawget(_G,'__stam').rows() end)";
     private const string CallMeta    = "pcall(function() rawset(_G,'__stam_meta',nil) rawget(_G,'__stam').meta() end)";
+    private const string CallSpecials = "pcall(function() rawset(_G,'__stam_sp',nil) rawget(_G,'__stam').specials() end)";
 
     private bool InWorld()
     {
@@ -67,11 +68,13 @@ public sealed partial class Plugin
     }
 
     // Starts the async roll / store in a game coroutine; the outcome lands in __stam_ret (TryTakeRet).
-    private bool StartRoll(bool bless, int times)
+    // `special` = the picked special item id (spec ⑬), 0 = none.
+    private bool StartRoll(bool bless, int times, int special)
     {
         if (!EnsureLua()) return false;
         _services.Lua.DoString("pcall(function() rawset(_G,'__stam_ret',nil) rawget(_G,'__stam').roll("
-                               + (bless ? "true" : "false") + "," + times.ToString(CultureInfo.InvariantCulture) + ") end)");
+                               + (bless ? "true" : "false") + "," + times.ToString(CultureInfo.InvariantCulture) + ","
+                               + special.ToString(CultureInfo.InvariantCulture) + ") end)");
         return true;
     }
 
@@ -148,6 +151,9 @@ public sealed partial class Plugin
                 _gameCategoryNames[i] = i < meta.Length ? ImprintCatalog.StripTags(meta[i]).Trim() : string.Empty;
             if (meta.Length > CategoryLibIds.Length)     _remnantName = ImprintCatalog.StripTags(meta[CategoryLibIds.Length]).Trim();
             if (meta.Length > CategoryLibIds.Length + 1) _prismName   = ImprintCatalog.StripTags(meta[CategoryLibIds.Length + 1]).Trim();
+            lua.DoString(CallSpecials);
+            _specials = SpecialItem.ParseAll(lua.ReadGlobalString("__stam_sp"));   // Plugin.Special.cs
+            _specialOptsSrc = null;   // the option captions carry the names
             _namesNext = 0;
             LogCatalogTiming("rows", t0);
             return;
@@ -165,7 +171,7 @@ public sealed partial class Plugin
         RebindTargets();
         RefilterPicker();
         _services.Log.Info($"[AutoManifest] catalogue ready: {_catalog.All.Count} imprints, {_catalog.ByEntry.Count} values; "
-                           + $"materials '{_remnantName}' / '{_prismName}'; sample: {CatalogSample()}");
+                           + $"materials '{_remnantName}' / '{_prismName}'; specials: {DescribeSpecials()}; sample: {CatalogSample()}");
         _mainWindow?.MarkDirty();
         _pickerWindow?.MarkDirty();
     }
@@ -180,6 +186,15 @@ public sealed partial class Plugin
         foreach (var i in picks)
             sb.Append('[').Append(a[i].Group).Append(' ').Append(a[i].Name).Append(' ').Append(a[i].RangeText).Append("] ");
         return sb.ToString();
+    }
+
+    // "1220401 'Measure Grating - Primary' type1 lib102, …" — once, at catalogue ready (spec ⑬ in-game check).
+    private string DescribeSpecials()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var s in _specials)
+            sb.Append(s.Id).Append(" '").Append(s.Name).Append("' type").Append(s.Type).Append(" lib").Append(s.Lib).Append(", ");
+        return sb.Length > 0 ? sb.ToString(0, sb.Length - 2) : "-";
     }
 
     private void LogCatalogTiming(string step, long t0)

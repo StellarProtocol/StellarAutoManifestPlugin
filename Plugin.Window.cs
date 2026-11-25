@@ -10,9 +10,9 @@ namespace Stellar.AutoManifest;
 /// Top → bottom:
 ///   ToolHeader [40 px accent tile | bold title / ONE live status line / thin spent-vs-limit bar while running]
 ///   TARGETS    hint "stops when all are stored" · 7 reserved rows, scrolling past 7 · "+ Add target"
-///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Keep better rolls cap dropdown
-///              (+ muted sub-line) · spend limit (typed, 0 = no limit) · keep free
-///   MATERIALS  hint "live" · Remnant / Dawn Prism counts
+///   RUN        hint "each pull = N Remnants at Lv.L" · pull size chips · Blessing On/Off · Special item dropdown (+ muted
+///              sub-line, spec ⑬) · Keep better rolls cap dropdown (+ muted sub-line) · spend limit (typed, 0 = no limit) · keep free
+///   MATERIALS  hint "live" · Remnant / Dawn Prism counts · picked special item (reserved row when none)
 ///   footer     Start (Primary, 120) or Stop (Danger, 120) + one line: last run / run log / end line with badge
 /// Everything below the header sits in a <see cref="ConfirmHostElement"/>, so the Start confirm (③) locks it modally.
 /// Every line is pinned (struts, fixed cells), so the window keeps ONE height in every state. The Funcs only read
@@ -111,6 +111,8 @@ public sealed partial class Plugin
             ChoiceChip(() => _loc.T(KeyPull10), () => _pullTen, () => SetPullTen(true), PullChipW, PanelColor, () => Running),
         }, Gap: 4f)),
         SettingRow(BlessingLabel, OnOffChip(() => _useBlessing, SetUseBlessing, () => !_st.BlessAllowed)),
+        // spec ⑬: special item pill dropdown (Plugin.Special.cs), recessed while a run is going.
+        SettingRowSub(() => _loc.T(KeySpecial), () => _loc.T(KeySpecialHint), SpecialControl()),
         // spec ⑫ (was ⑦'s On/Off chip): one row with a muted sub-line + the copy-cap pill dropdown; the setter ignores
         // picks while a run is going (like Blessing).
         SettingRowSub(() => _loc.T(KeyKeepBetter), () => _loc.T(KeyKeepBetterHint),
@@ -179,6 +181,7 @@ public sealed partial class Plugin
     {
         MaterialRow(RemnantName, () => _matRemnantText.Get(_st.Valid ? _st.Remnants : -1)),
         MaterialRow(PrismName, () => _matPrismText.Get(_st.Valid ? _st.Prisms : -1)),
+        SpecialMaterialRow(),   // the picked special item (spec ⑬); a reserved empty row without one
     });
 
     private readonly CountText _matRemnantText = new(), _matPrismText = new();
@@ -214,12 +217,16 @@ public sealed partial class Plugin
         // the sentence needs two lines in the 358 px cell, which fit the 28 px footer.
         new CellElement(new ConditionalElement(() => !Running && ReachBlocksStart(),
             new TextElement(GateText, Color: () => GateColor(), FontSize: 11) { RichEmoji = true },
-            new ConditionalElement(() => !Running && _endReason != EndReason.None,
-                new RowElement(new HudElement[]
-                {
-                    Badge(EndBadgeText, EndBadgeColor, WindowBg, EndBadgeW),
-                    new CellElement(SmallText(EndLineText, MutedColor), Weight: 1f),
-                }, Gap: 6f),
-                SmallText(FooterText, FooterColor))), Weight: 1f),
+            // spec ⑬: "<item> only rolls <Category> imprints. N targets can't roll with it." (amber, same look as the gate);
+            // it yields to the last run's end line until the item or the targets change.
+            new ConditionalElement(SpecialHintShown,
+                new TextElement(SpecialHintText, Color: () => GateColor(), FontSize: 11) { RichEmoji = true },
+                new ConditionalElement(() => !Running && _endReason != EndReason.None,
+                    new RowElement(new HudElement[]
+                    {
+                        Badge(EndBadgeText, EndBadgeColor, WindowBg, EndBadgeW),
+                        new CellElement(SmallText(EndLineText, MutedColor), Weight: 1f),
+                    }, Gap: 6f),
+                    SmallText(FooterText, FooterColor)))), Weight: 1f),
     }, Gap: 10f));
 }

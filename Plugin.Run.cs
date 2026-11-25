@@ -34,6 +34,8 @@ public sealed partial class Plugin
     {
         None, AllStored, PocketFull, SpendLimit, NoRemnants, NoPrism, Refused, StoreRefused, Timeout, UserStop, LeftWorld,
         DiscardFailed,   // a capped "Keep better rolls" swap could not discard the old copy (spec ⑫)
+        NoSpecial,       // fewer special items than the next pull needs (spec ⑬, Plugin.Special.cs)
+        SpecialBlocked,  // every still-waiting target is of a category the picked item can't roll (spec ⑬)
     }
 
     private RunPhase _phase;
@@ -83,7 +85,8 @@ public sealed partial class Plugin
         {
             ConfirmLabel = _loc.T(KeyStart), CancelLabel = _loc.T(KeyCancel), Severity = ConfirmSeverity.Primary,
             // amber "2 targets can't roll at Lv 2 yet: …" and/or the capped "Keep better rolls" line (spec ⑫); null = neither
-            Emphasis = JoinParagraphs(ConfirmReachLine(), ConfirmCapLine()),
+            // + the special item lines first (spec ⑬, Plugin.Special.cs)
+            Emphasis = JoinParagraphs(ConfirmSpecialLines(), JoinParagraphs(ConfirmReachLine(), ConfirmCapLine())),
         });
     }
 
@@ -119,13 +122,16 @@ public sealed partial class Plugin
         _runPulls = 0; _runSpent = 0; _runBetter = 0; _runDiscarded = 0; _stopRequested = false;
         _swapVictim = null;
         _runStartRemnants = _st.Remnants;
+        BeginSpecial();   // fixes the special item for the whole run (spec ⑬) — while the phase is still Idle
         _lastReplyAt = float.NegativeInfinity;
         _endReason = EndReason.None;
         SetFooter(FooterEvent.Starting);
         _services.Log.Info($"[AutoManifest] run start: targets={DescribeTargets()} pullSize={PullTimes} keepCopies={KeepCopies} blessing={_useBlessing}"
                            + $"(allowed={_st.BlessAllowed}) spendLimit={SpendLimit} keepFree={KeepFree} level={_st.Level} "
                            + $"pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms} exp={_st.Exp} "
-                           + $"rollNow={_rollNowTargets} notYet={_unreachTargets} reachable={_reachableTargets}");
+                           + $"rollNow={_rollNowTargets} notYet={_unreachTargets} reachable={_reachableTargets} "
+                           + $"special={_runSpecialId}(have={_st.SpecialCount(_runSpecialId)} lib={SpecialById(_runSpecialId)?.Lib ?? 0} "
+                           + $"blocked={BlockedWaitingCount()})");
         Enter(RunPhase.Cycle);
     }
 
@@ -182,13 +188,17 @@ public sealed partial class Plugin
         if (SpendLimit > 0 && _runSpent + cost > SpendLimit) { End(EndReason.SpendLimit); return; }   // 0 = no limit (spec ⑪)
         if (times == 10 ? !_st.ConsumeOk10 : !_st.ConsumeOk1) { End(EndReason.NoRemnants); return; }
         if (bless && _st.Prisms < times) { End(EndReason.NoPrism); return; }
+        // Special item (spec ⑬): never a pull without it — out of items or nothing it can roll is wanted → stop.
+        var sp = SpecialPreCheck(times);
+        if (sp != EndReason.None) { End(sp); return; }
 
         _res = ReadResults();
         _sigBefore = _res.Signature;
         _rollTimes = times; _rollCost = cost; _rollBless = bless;
         _services.Log.Info($"[AutoManifest] roll → times={times} bless={bless} level={_st.Level} cost={cost} "
-                           + $"spent={_runSpent}/{SpendLimit} pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms}");
-        if (!StartRoll(bless, times)) { End(EndReason.LeftWorld); return; }
+                           + $"spent={_runSpent}/{SpendLimit} pocket={_st.Stored}/{_st.StoreLimit} remnants={_st.Remnants} prisms={_st.Prisms}"
+                           + (_runSpecialId != 0 ? $" special={_runSpecialId} have={_st.SpecialCount(_runSpecialId)}" : string.Empty));
+        if (!StartRoll(bless, times, _runSpecialId)) { End(EndReason.LeftWorld); return; }
         Enter(RunPhase.Rolling);
     }
 
@@ -204,6 +214,7 @@ public sealed partial class Plugin
         if (ret != 0) { End(EndReason.Refused); return; }
         _runSpent += _rollCost;
         _runPulls += _rollTimes;
+        if (_runSpecialId != 0) _runSpecialUsed += _rollTimes;   // 1 per pull (checkReforgeItemEnough: times ≤ owned)
         SetFooter(FooterEvent.Pull);
         Enter(RunPhase.AwaitResults);
         AwaitResults(now);   // the container sync may already have landed with the reply
@@ -330,9 +341,11 @@ public sealed partial class Plugin
         _endBetter = _runBetter; _endDiscarded = _runDiscarded;
         _swapVictim = null;
         CaptureEndReach();
+        CaptureEndSpecial();
         _endComposed.Invalidate();
         _services.Log.Info($"[AutoManifest] run end: {reason} pulls={_runPulls} spent={_runSpent} pocket={_st.Stored}/{_st.StoreLimit} "
-                           + $"waiting={_endWaiting} better={_runBetter} discarded={_runDiscarded} targets={DescribeTargets()}");
+                           + $"waiting={_endWaiting} better={_runBetter} discarded={_runDiscarded} targets={DescribeTargets()}"
+                           + (_runSpecialId != 0 ? $" special={_runSpecialId} used={_runSpecialUsed} left={_st.SpecialCount(_runSpecialId)}" : string.Empty));
         MarkMain();
     }
 }

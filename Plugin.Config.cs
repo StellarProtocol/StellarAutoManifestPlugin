@@ -52,6 +52,7 @@ public sealed partial class Plugin
         // Same key the old dropdown wrote (an int), so a saved choice carries over as the typed value.
         _spendLimit    = Math.Max(0, _cfg.Get("spendLimit", DefaultSpendLimit));
         _keepFreeIndex = Math.Clamp(_cfg.Get("keepFree", 0), 0, KeepFreeChoices.Length - 1);
+        LoadSpecialConfig();   // "specialItem" = item id, 0 = None (spec ⑬, Plugin.Special.cs)
 
         // "group:step[:mark],…" — a stale group (another season's table) is kept and simply never matches; it shows
         // as "#<group>" until removed.
@@ -161,6 +162,7 @@ public sealed partial class Plugin
     private void TargetsChanged()
     {
         _targetsVer++;
+        _endYield = true;   // a new "not with item" situation shows over the last end line (Plugin.Special.cs)
         UpdateReach();
     }
 

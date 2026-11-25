@@ -33,11 +33,15 @@ namespace Stellar.AutoManifest;
 //                  (entry_vm.lua:20-30); class (buff) rows return '' → GetReforgeEntryAttrDesc(<row ID>) (:12),
 //                  short name = the quoted span (live-validated 2026-11-21, KB Matrix-Manifestation §7c); category Lang('SeasonTalentAttrLibName_'..id) (entry_popup_view.lua:375)
 //   item names     Z.TableMgr.GetRow('ItemTableMgr', id, true).Name (items_vm.lua:1268)
+//   special items  SeasonTalentReforgeItemTableMgr rows with TypeEnum ~= E.SeasonTalentReforgeItemType.Blessing (4)
+//                  (refine_sub_view.lua:297-330; enum_define.lua:1393 AttrLib=1 / Quality=2 / AttrType=3 / Blessing=4);
+//                  usable = owned > 0 AND CheckCondition(row.Condition, false) (refine_sub_view.lua:697-709); the roll
+//                  sends { blessing row, special row } (getRefineBlessItems, :589-599); enough = times <= owned (:497-507)
 //   async          Z.CoroUtil.create_coro_xpcall(fn, errFn)() + Z.CancelSource.Rent() / :CreateToken() / :Recycle()
 // ⚠️ Keep every string literal in SINGLE quotes: this is a C# verbatim string.
 public sealed partial class Plugin
 {
-    private const int LuaScriptVersion = 6;
+    private const int LuaScriptVersion = 7;
 
     private const string LuaScript = @"pcall(function()
 local M = {}
@@ -76,6 +80,21 @@ local function slotRows()
     table.sort(slots, function(a, b) return a.Id < b.Id end)
   end
   return slots
+end
+-- Special items (spec ⑬): every reforge item row that is not a Blessing, by Id like the game's own list.
+local specs = nil
+local function specRows()
+  if specs == nil then
+    specs = {}
+    local e = rawget(_G, 'E')
+    local bt = 4
+    if e and e.SeasonTalentReforgeItemType and e.SeasonTalentReforgeItemType.Blessing then bt = e.SeasonTalentReforgeItemType.Blessing end
+    for _, row in pairs(tbl('SeasonTalentReforgeItemTableMgr').GetDatas()) do
+      if row.TypeEnum ~= bt then specs[#specs + 1] = row end
+    end
+    table.sort(specs, function(a, b) return a.Id < b.Id end)
+  end
+  return specs
 end
 function M.state()
   local rd, sd, sid = reforge()
@@ -122,9 +141,31 @@ function M.state()
   end
   local exp = 0
   if sd and sd.exp then exp = sd.exp end
+  -- Special items as id:owned:unlocked (unlocked = the row's Condition passes now, like getAvailableSelectedMaterial).
+  local sp = {}
+  for _, r in ipairs(specRows()) do
+    -- pcall: one bad row must not abort the whole state line (an error here would leave __stam_s stale).
+    local okp, okc = pcall(Z.ConditionHelper.CheckCondition, r.Condition, false)
+    okc = okp and okc
+    sp[#sp + 1] = r.Id .. ':' .. count(r.Id) .. ':' .. (okc and 1 or 0)
+  end
   rawset(_G, '__stam_s', table.concat({ '1', sid, lv, rd.storeEntryLimit or 0, stored, count(REM), count(BLESS), cost,
     ok1 and 1 or 0, ok10 and 1 or 0, bless and 1 or 0, prof, table.concat(mask), exp, table.concat(lvmask), cid,
-    table.concat(pocket, ',') }, '|') .. '|')
+    table.concat(pocket, ','), table.concat(sp, ',') }, '|') .. '|')
+end
+-- Static special-item data, once per catalogue load: 'id,type,param1' US name, records RS-separated. param1 = the first
+-- Param (TypeEnum 1 = the category's AttrLibId) or 0 when the row has none (1220401 Primary ships an EMPTY Param).
+function M.specials()
+  local out = {}
+  for _, row in ipairs(specRows()) do
+    local p = 0
+    pcall(function() if row.Param and row.Param[1] then p = row.Param[1] end end)
+    local n = ''
+    local r = Z.TableMgr.GetRow('ItemTableMgr', row.Id, true)
+    if r and r.Name then n = tostring(r.Name) end
+    out[#out + 1] = row.Id .. ',' .. (row.TypeEnum or 0) .. ',' .. p .. '\31' .. n
+  end
+  rawset(_G, '__stam_sp', table.concat(out, '\30'))
 end
 -- The current season's level table, once per season: 'season,expPerBlessPull;lv,upgradeExp,n2,n3,n4,n5,p2,p3,p4,p5;…'.
 -- NormalWeight / PrimeWeight are indexed BY QUALITY (entry_popup_view.lua:227-236: ipairs → quality), so [2..5] =
@@ -176,13 +217,20 @@ local function run(fn)
     rawset(_G, '__stam_ret', -1)
   end)()
 end
-function M.roll(bless, times)
+-- special = a special item id (spec ⑬) or 0; sent after the Blessing row, like getRefineBlessItems.
+function M.roll(bless, times, special)
   run(function(tok)
     local items = {}
+    local it = tbl('SeasonTalentReforgeItemTableMgr')
     if bless then
-      local row = tbl('SeasonTalentReforgeItemTableMgr').GetRow(BLESS, true)
+      local row = it.GetRow(BLESS, true)
       if row == nil then return -2 end
-      items[1] = row
+      items[#items + 1] = row
+    end
+    if special and special ~= 0 then
+      local row = it.GetRow(special, true)
+      if row == nil then return -2 end
+      items[#items + 1] = row
     end
     return entryVm().AsyncSeasonTalentReforge(items, times, tok)
   end)
@@ -322,6 +370,6 @@ function M.prof(id)
   rawset(_G, '__stam_prof', n)
 end
 rawset(_G, '__stam', M)
-rawset(_G, '__stam_v', 6)   -- = LuaScriptVersion: bump both together
+rawset(_G, '__stam_v', 7)   -- = LuaScriptVersion: bump both together
 end)";
 }
